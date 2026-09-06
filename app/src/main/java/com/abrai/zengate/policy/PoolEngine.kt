@@ -36,6 +36,19 @@ object PoolEngine {
     /** What a gated-app entry does: drain the pool, or block when it is empty. */
     enum class EnterVerdict { DRAIN, BLOCK }
 
+    /**
+     * Live display value: the snapshot pool minus the open segment's elapsed
+     * wall-clock (floored at zero). No segment (start 0) -> snapshot as-is.
+     */
+    fun displayPoolSec(
+        poolSec: Long,
+        segmentStartElapsedMs: Long,
+        nowElapsedMs: Long,
+    ): Long {
+        if (segmentStartElapsedMs == 0L) return poolSec
+        return (poolSec - (nowElapsedMs - segmentStartElapsedMs) / 1_000).coerceAtLeast(0)
+    }
+
     fun enterVerdict(poolSec: Long): EnterVerdict = if (poolSec > 0) EnterVerdict.DRAIN else EnterVerdict.BLOCK
 
     fun penaltySec(

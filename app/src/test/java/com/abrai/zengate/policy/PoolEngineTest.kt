@@ -54,6 +54,13 @@ class PoolEngineTest {
     }
 
     @Test
+    fun `display pool subtracts open segment, floors at zero`() {
+        assertEquals(7, PoolEngine.displayPoolSec(10, 1_000, 4_000))
+        assertEquals(10, PoolEngine.displayPoolSec(10, 0, 99_000))
+        assertEquals(0, PoolEngine.displayPoolSec(2, 1_000, 9_000))
+    }
+
+    @Test
     fun `penalty escalates per unlock`() {
         assertEquals(30, PoolEngine.penaltySec(PoolState(usagesToday = 0), cfg))
         assertEquals(50, PoolEngine.penaltySec(PoolState(usagesToday = 2), cfg))

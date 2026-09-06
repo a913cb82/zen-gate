@@ -22,6 +22,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -80,11 +81,12 @@ class GateService : Service() {
                 if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
                     android.content.pm.PackageManager.PERMISSION_GRANTED
                 ) {
-                    val line = statusLine(enabled, snap.poolState(), cfg, list, fg)
+                    val line = liveLine(enabled, snap.poolState(), cfg, list, fg)
                     if (line != lastStatusLine) {
                         lastStatusLine = line
                         manager.notify(NOTIFICATION_ID, buildNotification(enabled))
                     }
+                    manageFreeTicker(line)
                 }
             }.collect { }
         }
@@ -133,6 +135,8 @@ class GateService : Service() {
 
     private fun onScreenOff() {
         Log.d(TAG, "screen off")
+        freeTicker?.cancel()
+        freeTicker = null
         if (!GateState.storeLoaded) return
         val elapsed = SystemClock.elapsedRealtime()
         val wall = System.currentTimeMillis()
@@ -192,6 +196,64 @@ class GateService : Service() {
     }
 
     private var lastStatusLine: String? = null
+
+    private var freeTicker: kotlinx.coroutines.Job? = null
+
+    /** Status line with the live display pool (open segment elapsed). */
+    private fun liveLine(
+        enabled: Boolean,
+        snap: com.abrai.zengate.policy.PoolState,
+        cfg: com.abrai.zengate.policy.ZenConfig,
+        list: Set<String>,
+        fg: String?,
+    ): String {
+        val live =
+            snap.copy(
+                poolSec =
+                    com.abrai.zengate.policy.PoolEngine.displayPoolSec(
+                        snap.poolSec,
+                        GateState.drainEnterElapsedMs,
+                        android.os.SystemClock.elapsedRealtime(),
+                    ),
+            )
+        return statusLine(enabled, live, cfg, list, fg)
+    }
+
+    /**
+     * Bounded 1/s refresh while grace is live on a lit screen (≤ pool seconds
+     * per grant). Everything else reuses the event-driven collector.
+     */
+    private fun manageFreeTicker(line: String) {
+        val power = getSystemService(PowerManager::class.java)
+        if (!line.startsWith("Free time") || !power.isInteractive) {
+            freeTicker?.cancel()
+            freeTicker = null
+            return
+        }
+        if (freeTicker?.isActive == true) return
+        freeTicker =
+            scope.launch {
+                while (isActive) {
+                    kotlinx.coroutines.delay(1_000)
+                    if (!power.isInteractive) break
+                    val tick =
+                        liveLine(
+                            GateState.enabled,
+                            GateState.poolState(),
+                            GateState.config,
+                            GateState.userWhitelist,
+                            GateState.lastEventPkg.value,
+                        )
+                    if (tick != lastStatusLine) {
+                        lastStatusLine = tick
+                        val manager = getSystemService(NotificationManager::class.java)
+                        manager.notify(NOTIFICATION_ID, buildNotification(GateState.enabled))
+                    }
+                    if (!tick.startsWith("Free time")) break
+                }
+                freeTicker = null
+            }
+    }
 
     private fun statusLine(
         enabled: Boolean,

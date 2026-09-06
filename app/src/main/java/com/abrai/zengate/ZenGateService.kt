@@ -24,6 +24,8 @@ class ZenGateService : AccessibilityService() {
     private lateinit var store: GateStore
     private var cachedImes: Set<String> = emptySet()
     private var imeCacheAt: Long = 0
+    private var cachedLaunchers: Set<String> = emptySet()
+    private var launcherCacheAt: Long = 0
 
     override fun onServiceConnected() {
         store = GateStore(this)
@@ -97,7 +99,13 @@ class ZenGateService : AccessibilityService() {
             GateState.lastGatedPkg = pkg
             GateState.drainEnterElapsedMs = 0L
         }
-        if (cur.poolSec > 0) {
+        if (pkg in launcherPkgs()) {
+            // Transit surface: never drains, but an empty pool still blocks here.
+            GateState.drainEnterElapsedMs = 0L
+            GateAlarms.cancelPoolExpiry(this)
+            persist(cur)
+            if (cur.poolSec > 0) return
+        } else if (cur.poolSec > 0) {
             if (GateState.drainEnterElapsedMs == 0L) {
                 GateState.drainEnterElapsedMs = elapsed
                 GateAlarms.schedulePoolExpiry(this, cur.poolSec * 1_000)
@@ -158,6 +166,19 @@ class ZenGateService : AccessibilityService() {
             imeCacheAt = now
         }
         return cachedImes
+    }
+
+    /** Home-screen packages: transit surfaces, resolved live (no hardcoding). */
+    private fun launcherPkgs(): Set<String> {
+        val now = SystemClock.elapsedRealtime()
+        if (cachedLaunchers.isEmpty() || now - launcherCacheAt > IME_CACHE_TTL_MS) {
+            val home =
+                android.content.Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+            cachedLaunchers =
+                packageManager.queryIntentActivities(home, 0).map { it.activityInfo.packageName }.toSet()
+            launcherCacheAt = now
+        }
+        return cachedLaunchers
     }
 
     companion object {

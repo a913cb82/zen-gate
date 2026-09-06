@@ -9,6 +9,7 @@ Everything on the phone is blocked except a survival whitelist + user-whiteliste
 ## 2. Functional spec (frozen)
 
 - **Default-deny.** Any foreground app not on the whitelist drains the pool at 1s/s. Whitelisted apps: unlimited, no drain.
+- **Launcher is a transit surface:** idling on the launcher neither drains the pool nor grants refuge — but an empty pool still shows the block there (no safe haven). This keeps grace usable for actual app opens instead of evaporating on the home screen.
 - **Free pool:** 10s granted after every unlock. Rolling refill: +20s every 5 min, hard cap 20s (never stacks).
 - **Block screen:** when pool hits 0 outside whitelist/survival list, show fully opaque fullscreen block over whatever is showing (including launcher, settings). Phone use during the wait is impossible — the block covers everything.
 - **Wait penalty:** 30s + 10s × unlocks-today. Countdown runs only while the block is showing.

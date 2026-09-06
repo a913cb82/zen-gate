@@ -42,7 +42,9 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.abrai.zengate.policy.ZenConfig
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** M4: home + whitelist picker + knobs. All persisted in DataStore, effective immediately. */
 class MainActivity : ComponentActivity() {
@@ -194,15 +196,19 @@ private fun pickerScreen(
 ) {
     val scope = rememberCoroutineScope()
     val pm = store.appContext.packageManager
-    val apps = remember { loadApps(pm) }
+    var apps by remember { mutableStateOf<List<AppEntry>?>(null) }
+    LaunchedEffect(Unit) {
+        apps = withContext(Dispatchers.Default) { loadApps(pm) }
+    }
     val whitelist by store.whitelist.collectAsState(initial = emptySet())
     var query by remember { mutableStateOf("") }
     val shown =
         remember(query, apps) {
+            val all = apps ?: emptyList()
             if (query.isBlank()) {
-                apps
+                all
             } else {
-                apps.filter {
+                all.filter {
                     it.label.contains(query, ignoreCase = true) || it.pkg.contains(query, ignoreCase = true)
                 }
             }
@@ -220,6 +226,9 @@ private fun pickerScreen(
             )
         }
         Spacer(Modifier.height(8.dp))
+        if (apps == null) {
+            Text("Loading apps…")
+        }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             items(shown, key = { it.pkg }) { app ->
                 val checked = app.pkg in whitelist

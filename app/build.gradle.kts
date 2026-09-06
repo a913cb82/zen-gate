@@ -66,5 +66,6 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.junit)
 }

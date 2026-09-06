@@ -70,9 +70,14 @@ class ZenGateService : AccessibilityService() {
             return
         }
         if (PoolEngine.hasSession(cur)) {
-            GateState.lastGatedPkg = pkg
-            persist(cur)
-            return
+            // Event-driven expiry (alarm is the backstop for the no-events case).
+            if (PoolEngine.sessionRemainingMs(cur, wall, cfg) <= 0) {
+                cur = cur.copy(sessionStartWallMs = 0L, sessionScreenOnMs = 0L)
+            } else {
+                GateState.lastGatedPkg = pkg
+                persist(cur)
+                return
+            }
         }
         if (pkg != GateState.lastGatedPkg) {
             settleDrainLocked(cur, elapsed)

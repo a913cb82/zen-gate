@@ -40,6 +40,7 @@ class GateService : Service() {
                 when (intent.action) {
                     Intent.ACTION_SCREEN_OFF -> onScreenOff()
                     Intent.ACTION_SCREEN_ON -> onScreenOn()
+                    Intent.ACTION_USER_PRESENT -> onPhoneUnlock()
                 }
             }
         }
@@ -83,6 +84,9 @@ class GateService : Service() {
             screenReceiver,
             IntentFilter(Intent.ACTION_SCREEN_ON).apply {
                 addAction(Intent.ACTION_SCREEN_OFF)
+                // Dynamic (not manifest): HyperOS SmartPower denies this broadcast
+                // to background manifest receivers; the live FGS gets it directly.
+                addAction(Intent.ACTION_USER_PRESENT)
             },
             RECEIVER_NOT_EXPORTED,
         )
@@ -135,6 +139,19 @@ class GateService : Service() {
                 Log.d(TAG, "screen off: drained $spent pool=${snap.poolSec}")
             }
             store.savePool(snap)
+        }
+    }
+
+    private fun onPhoneUnlock() {
+        if (!GateState.storeLoaded) return
+        scope.launch {
+            val snap = GateState.poolState()
+            val cur = PoolEngine.phoneUnlock(snap, System.currentTimeMillis(), GateState.config)
+            if (cur != snap) {
+                GateState.applyPool(cur)
+                store.savePool(cur)
+                Log.d(TAG, "phone unlock; grace pool=${cur.poolSec}")
+            }
         }
     }
 

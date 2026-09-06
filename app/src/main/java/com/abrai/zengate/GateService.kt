@@ -65,8 +65,8 @@ class GateService : Service() {
                 GateState.usagesToday = snap.usagesToday
                 GateState.dayId = snap.dayId
                 GateState.lastRefillMs = snap.lastRefillMs
-                GateState.sessionStartMs = snap.sessionStartMs
-                GateState.sessionScreenOnMs = snap.sessionScreenOnMs
+                GateState.sessionExpiryMs = snap.sessionExpiryMs
+                GateState.sessionPending = snap.sessionPending
                 GateState.config = cfg
                 GateState.userWhitelist = list
                 GateState.storeLoaded = true
@@ -127,7 +127,7 @@ class GateService : Service() {
             val cfg = GateState.config
             var snap = GateState.poolState()
             snap = PoolEngine.refill(snap, wall, cfg)
-            // Pause pool drain.
+            // Pause pool drain. Sessions are wall-clock: unaffected by screen state.
             if (GateState.lastGatedPkg != null &&
                 GateState.drainEnterElapsedMs != 0L &&
                 !PoolEngine.hasSession(snap)
@@ -137,16 +137,6 @@ class GateService : Service() {
                 GateState.drainEnterElapsedMs = 0L
                 GateAlarms.cancelPoolExpiry(this@GateService)
                 Log.d(TAG, "screen off: drained $spent pool=${snap.poolSec}")
-            }
-            // Pause session allowance clock.
-            if (PoolEngine.hasSession(snap) && GateState.sessionSegmentStartElapsedMs != 0L) {
-                snap =
-                    snap.copy(
-                        sessionScreenOnMs = snap.sessionScreenOnMs + (elapsed - GateState.sessionSegmentStartElapsedMs),
-                    )
-                GateState.sessionSegmentStartElapsedMs = 0L
-                GateAlarms.cancelSessionEnd(this@GateService)
-                Log.d(TAG, "screen off: session accum=${snap.sessionScreenOnMs}")
             }
             store.savePool(snap)
         }
@@ -160,13 +150,11 @@ class GateService : Service() {
             val cfg = GateState.config
             val snap = PoolEngine.refill(GateState.poolState(), wall, cfg)
             store.savePool(snap)
-            if (PoolEngine.hasSession(snap)) {
-                GateState.sessionSegmentStartElapsedMs = elapsed
-                val remainingAllowance = cfg.sessionAllowSec * 1_000 - snap.sessionScreenOnMs
-                if (remainingAllowance > 0) {
-                    GateAlarms.scheduleSessionEnd(this@GateService, remainingAllowance, hard = false)
-                }
-            } else if (GateState.lastGatedPkg != null && snap.poolSec > 0 && GateState.drainEnterElapsedMs == 0L) {
+            if (!PoolEngine.hasSession(snap) &&
+                GateState.lastGatedPkg != null &&
+                snap.poolSec > 0 &&
+                GateState.drainEnterElapsedMs == 0L
+            ) {
                 GateState.drainEnterElapsedMs = elapsed
                 GateAlarms.schedulePoolExpiry(this@GateService, snap.poolSec * 1_000)
             }

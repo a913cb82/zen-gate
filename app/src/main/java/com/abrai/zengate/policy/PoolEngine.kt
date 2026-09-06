@@ -9,11 +9,9 @@ data class ZenConfig(
     val unlockPoolSec: Long = 10,
     val refillAmountSec: Long = 20,
     val refillIntervalSec: Long = 300,
-    val poolCapSec: Long = 20,
     val baseWaitSec: Long = 30,
     val waitIncrementSec: Long = 10,
     val sessionAllowSec: Long = 300,
-    val sessionHardLimitSec: Long = 1_800,
     val resetHour: Int = 0,
     val resetMinute: Int = 0,
 )
@@ -24,17 +22,17 @@ data class PoolState(
     val usagesToday: Int = 0,
     val dayId: String = "",
     val lastRefillWallMs: Long = 0L,
-    val sessionStartWallMs: Long = 0L,
-    val sessionScreenOnMs: Long = 0L,
+    val sessionExpiryWallMs: Long = 0L,
+    val sessionPending: Boolean = false,
 )
 
 /**
  * Pure pool/session math. No Android imports — unit-tested headless.
- * Callers feed explicit timestamps; screen on/off accumulation is tracked
- * by the caller (GateService) via [sessionScreenOnMs].
+ * Sessions are plain wall-clock deadlines; expiry while whitelisted arms
+ * [PoolState.sessionPending] instead of blocking immediately.
  */
 object PoolEngine {
-    /** Rolling refill: +amount per elapsed interval, hard-capped. First call seeds the clock. */
+    /** Rolling refill: +amount per elapsed interval, capped at one refill amount. */
     fun refill(
         state: PoolState,
         nowWallMs: Long,
@@ -44,7 +42,7 @@ object PoolEngine {
         val elapsedSec = (nowWallMs - state.lastRefillWallMs) / 1_000
         if (elapsedSec < cfg.refillIntervalSec) return state
         val intervals = elapsedSec / cfg.refillIntervalSec
-        val pool = (state.poolSec + intervals * cfg.refillAmountSec).coerceAtMost(cfg.poolCapSec)
+        val pool = (state.poolSec + intervals * cfg.refillAmountSec).coerceAtMost(cfg.refillAmountSec)
         return state.copy(
             poolSec = pool,
             lastRefillWallMs = state.lastRefillWallMs + intervals * cfg.refillIntervalSec * 1_000,
@@ -56,12 +54,17 @@ object PoolEngine {
         seconds: Long,
     ): PoolState = state.copy(poolSec = (state.poolSec - seconds).coerceAtLeast(0))
 
+    /** What a gated-app entry does: drain the pool, or block when it is empty. */
+    enum class EnterVerdict { DRAIN, BLOCK }
+
+    fun enterVerdict(poolSec: Long): EnterVerdict = if (poolSec > 0) EnterVerdict.DRAIN else EnterVerdict.BLOCK
+
     fun penaltySec(
         state: PoolState,
         cfg: ZenConfig = ZenConfig(),
     ): Long = cfg.baseWaitSec + cfg.waitIncrementSec * state.usagesToday
 
-    /** Unlock: count it, start the session clocks, guarantee the grace pool. */
+    /** Unlock: count it, set the wall-clock deadline, guarantee the grace pool. */
     fun unlock(
         state: PoolState,
         nowWallMs: Long,
@@ -69,26 +72,21 @@ object PoolEngine {
     ): PoolState =
         state.copy(
             usagesToday = state.usagesToday + 1,
-            sessionStartWallMs = nowWallMs,
-            sessionScreenOnMs = 0L,
+            sessionExpiryWallMs = nowWallMs + cfg.sessionAllowSec * 1_000,
+            sessionPending = false,
             poolSec = state.poolSec.coerceAtLeast(cfg.unlockPoolSec),
         )
 
-    fun hasSession(state: PoolState): Boolean = state.sessionStartWallMs != 0L
+    fun hasSession(state: PoolState): Boolean = state.sessionExpiryWallMs != 0L
 
-    /**
-     * Remaining session ms: allowance burns screen-on time only, hard limit
-     * burns wall time. Whichever hits zero first ends it.
-     */
+    /** Remaining session ms: wall-clock time to the deadline, floored at zero. */
     fun sessionRemainingMs(
         state: PoolState,
         nowWallMs: Long,
         cfg: ZenConfig = ZenConfig(),
     ): Long {
         if (!hasSession(state)) return 0L
-        val allowanceLeft = cfg.sessionAllowSec * 1_000 - state.sessionScreenOnMs
-        val hardLeft = cfg.sessionHardLimitSec * 1_000 - (nowWallMs - state.sessionStartWallMs)
-        return minOf(allowanceLeft, hardLeft).coerceAtLeast(0L)
+        return (state.sessionExpiryWallMs - nowWallMs).coerceAtLeast(0L)
     }
 
     /** Midnight: fresh counters, grace pool, any running session ends. */
@@ -102,8 +100,8 @@ object PoolEngine {
             usagesToday = 0,
             dayId = todayId,
             lastRefillWallMs = nowWallMs,
-            sessionStartWallMs = 0L,
-            sessionScreenOnMs = 0L,
+            sessionExpiryWallMs = 0L,
+            sessionPending = false,
         )
 
     fun needsMidnightReset(

@@ -21,8 +21,7 @@ object GateAlarms {
     const val ACTION_MIDNIGHT = "com.abrai.zengate.MIDNIGHT"
 
     private const val RC_POOL = 11
-    private const val RC_SESSION_ALLOWANCE = 12
-    private const val RC_SESSION_HARD = 13
+    private const val RC_SESSION = 12
     private const val RC_MIDNIGHT = 14
     private const val TAG = "ZenGate"
 
@@ -50,14 +49,8 @@ object GateAlarms {
     fun scheduleSessionEnd(
         context: Context,
         delayMs: Long,
-        hard: Boolean,
     ) {
-        exactIn(context, ACTION_SESSION_END, if (hard) RC_SESSION_HARD else RC_SESSION_ALLOWANCE, delayMs)
-    }
-
-    fun cancelSessionEnd(context: Context) {
-        cancel(context, ACTION_SESSION_END, RC_SESSION_ALLOWANCE)
-        cancel(context, ACTION_SESSION_END, RC_SESSION_HARD)
+        exactIn(context, ACTION_SESSION_END, RC_SESSION, delayMs)
     }
 
     fun scheduleMidnight(

@@ -17,13 +17,22 @@ class PoolEngineTest {
     }
 
     @Test
-    fun `refill grants per interval and caps`() {
-        val s = PoolState(poolSec = 5, lastRefillWallMs = t0)
-        assertEquals(5, PoolEngine.refill(s, t0 + 299_000, cfg).poolSec)
-        val one = PoolEngine.refill(s, t0 + 300_000, cfg)
-        assertEquals(20, one.poolSec) // 5 + 20 capped at 20
+    fun `enter verdict drains when pool remains, blocks when empty`() {
+        assertEquals(PoolEngine.EnterVerdict.DRAIN, PoolEngine.enterVerdict(1))
+        assertEquals(PoolEngine.EnterVerdict.DRAIN, PoolEngine.enterVerdict(20))
+        assertEquals(PoolEngine.EnterVerdict.BLOCK, PoolEngine.enterVerdict(0))
+    }
+
+    @Test
+    fun `refill caps at refill amount`() {
+        val s = PoolState(poolSec = 18, lastRefillWallMs = t0)
+        assertEquals(20, PoolEngine.refill(s, t0 + 300_000, cfg).poolSec)
+        val low = PoolState(poolSec = 5, lastRefillWallMs = t0)
+        assertEquals(5, PoolEngine.refill(low, t0 + 299_000, cfg).poolSec)
+        val one = PoolEngine.refill(low, t0 + 300_000, cfg)
+        assertEquals(20, one.poolSec)
         assertEquals(t0 + 300_000, one.lastRefillWallMs)
-        val three = PoolEngine.refill(s, t0 + 900_000, cfg)
+        val three = PoolEngine.refill(low, t0 + 900_000, cfg)
         assertEquals(20, three.poolSec)
     }
 
@@ -40,12 +49,12 @@ class PoolEngineTest {
     }
 
     @Test
-    fun `unlock counts guarantees pool and starts clocks`() {
+    fun `unlock sets wall-clock expiry and clears pending`() {
         val out = PoolEngine.unlock(PoolState(poolSec = 0, usagesToday = 2), t0, cfg)
         assertEquals(3, out.usagesToday)
         assertEquals(10, out.poolSec)
-        assertEquals(t0, out.sessionStartWallMs)
-        assertEquals(0, out.sessionScreenOnMs)
+        assertEquals(t0 + 300_000, out.sessionExpiryWallMs)
+        assertFalse(out.sessionPending)
     }
 
     @Test
@@ -55,22 +64,19 @@ class PoolEngineTest {
     }
 
     @Test
-    fun `session remaining is min of allowance and hard limit`() {
-        val s = PoolState(sessionStartWallMs = t0, sessionScreenOnMs = 60_000)
-        assertEquals(240_000, PoolEngine.sessionRemainingMs(s, t0 + 60_000, cfg))
-        // Hard limit binds: 1700s wall elapsed (100s left) but full allowance left.
-        val old = PoolState(sessionStartWallMs = t0, sessionScreenOnMs = 0)
-        assertEquals(100_000, PoolEngine.sessionRemainingMs(old, t0 + 1_700_000, cfg))
-        // No session.
+    fun `session remaining is wall-clock time to expiry`() {
+        assertEquals(
+            240_000,
+            PoolEngine.sessionRemainingMs(PoolState(sessionExpiryWallMs = t0 + 300_000), t0 + 60_000, cfg),
+        )
+        assertEquals(0, PoolEngine.sessionRemainingMs(PoolState(sessionExpiryWallMs = t0 + 300_000), t0 + 300_000, cfg))
+        assertEquals(0, PoolEngine.sessionRemainingMs(PoolState(sessionExpiryWallMs = t0 + 300_000), t0 + 400_000, cfg))
         assertEquals(0, PoolEngine.sessionRemainingMs(PoolState(), t0, cfg))
-        // Expired allowance.
-        val spent = PoolState(sessionStartWallMs = t0, sessionScreenOnMs = 300_000)
-        assertEquals(0, PoolEngine.sessionRemainingMs(spent, t0 + 300_000, cfg))
     }
 
     @Test
     fun `midnight resets counters pool and session`() {
-        val s = PoolState(poolSec = 0, usagesToday = 5, dayId = "2026-09-05", sessionStartWallMs = t0)
+        val s = PoolState(poolSec = 0, usagesToday = 5, dayId = "2026-09-05", sessionExpiryWallMs = t0)
         assertTrue(PoolEngine.needsMidnightReset(s, "2026-09-06"))
         assertFalse(PoolEngine.needsMidnightReset(s, "2026-09-05"))
         assertFalse(PoolEngine.needsMidnightReset(PoolState(dayId = ""), "2026-09-06"))
@@ -78,7 +84,8 @@ class PoolEngineTest {
         assertEquals(0, out.usagesToday)
         assertEquals(10, out.poolSec)
         assertEquals("2026-09-06", out.dayId)
-        assertEquals(0, out.sessionStartWallMs)
+        assertEquals(0, out.sessionExpiryWallMs)
+        assertFalse(out.sessionPending)
     }
 
     @Test

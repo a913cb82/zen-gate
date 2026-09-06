@@ -64,7 +64,9 @@ class MainActivity : ComponentActivity() {
                         setOf(
                             "com.google.android.dialer",
                             "com.google.android.apps.messaging",
+                            "com.abrai.zengate",
                         ),
+                        version = 2,
                     )
                 }
                 var screen by remember { mutableStateOf("home") }
@@ -182,8 +184,11 @@ private fun pickerScreen(
     }
     val whitelist by store.whitelist.collectAsState(initial = emptySet())
     var query by remember { mutableStateOf("") }
-    val shown =
-        remember(query, apps, whitelist) {
+    // Ticked-top order freezes while toggling (re-sorts on filter/data change only),
+    // so rows never teleport under the finger.
+    val tickedAtFilter = remember(query, apps) { whitelist }
+    val ordered =
+        remember(query, apps, tickedAtFilter) {
             val all = apps ?: emptyList()
             val filtered =
                 if (query.isBlank()) {
@@ -193,8 +198,7 @@ private fun pickerScreen(
                         it.label.contains(query, ignoreCase = true) || it.pkg.contains(query, ignoreCase = true)
                     }
                 }
-            // Ticked apps float to the top; each group lexicographic.
-            filtered.sortedWith(compareBy({ it.pkg !in whitelist }, { it.label.lowercase() }))
+            filtered.sortedWith(compareBy({ it.pkg !in tickedAtFilter }, { it.label.lowercase() }))
         }
     Column(Modifier.fillMaxSize().statusBarsPadding().padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -213,7 +217,7 @@ private fun pickerScreen(
             Text("Loading apps…")
         }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            items(shown, key = { it.pkg }) { app ->
+            items(ordered, key = { it.pkg }) { app ->
                 val checked = app.pkg in whitelist
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -234,23 +238,20 @@ private fun pickerScreen(
 }
 
 @Composable
-private fun intKnobField(
+private fun knobField(
     label: String,
-    value: Int,
-    default: Int,
-    min: Int,
-    max: Int,
-    onSet: (Int) -> Unit,
+    value: Long,
+    onSet: (Long) -> Unit,
 ) {
     var text by remember(value) { mutableStateOf(value.toString()) }
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        Text("$label (dflt $default)", modifier = Modifier.weight(1f))
+        Text(label, modifier = Modifier.weight(1f))
         Spacer(Modifier.width(8.dp))
         TextField(
             value = text,
             onValueChange = {
                 text = it
-                it.toIntOrNull()?.let { v -> if (v in min..max) onSet(v) }
+                it.toLongOrNull()?.let { v -> if (v >= 0) onSet(v) }
             },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             singleLine = true,
@@ -266,47 +267,28 @@ private fun knobsScreen(
 ) {
     val scope = rememberCoroutineScope()
     val cfg by store.config.collectAsState(initial = ZenConfig())
-    val def = ZenConfig()
     Column(Modifier.fillMaxSize().statusBarsPadding().padding(16.dp)) {
         Button(onClick = onBack) { Text("Back") }
         Spacer(Modifier.height(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
-                knobField("Session allowance (s)", cfg.sessionAllowSec, def.sessionAllowSec) {
+                knobField("Session allowance", cfg.sessionAllowSec) {
                     scope.launch { store.setKnob(GateStoreKeys.K_SESSION_ALLOW, it) }
                 }
-                knobField("Free pool on unlock (s)", cfg.unlockPoolSec, def.unlockPoolSec) {
+                knobField("Free pool on unlock", cfg.unlockPoolSec) {
                     scope.launch { store.setKnob(GateStoreKeys.K_UNLOCK_POOL, it) }
                 }
-                knobField("Refill amount (s)", cfg.refillAmountSec, def.refillAmountSec) {
+                knobField("Refill amount", cfg.refillAmountSec) {
                     scope.launch { store.setKnob(GateStoreKeys.K_REFILL_AMOUNT, it) }
                 }
-                knobField("Refill interval (s)", cfg.refillIntervalSec, def.refillIntervalSec) {
+                knobField("Refill interval", cfg.refillIntervalSec) {
                     scope.launch { store.setKnob(GateStoreKeys.K_REFILL_INTERVAL, it) }
                 }
-                knobField("Pool cap (s)", cfg.poolCapSec, def.poolCapSec) {
-                    scope.launch { store.setKnob(GateStoreKeys.K_POOL_CAP, it) }
-                }
-                knobField("Base wait (s)", cfg.baseWaitSec, def.baseWaitSec) {
+                knobField("Base wait", cfg.baseWaitSec) {
                     scope.launch { store.setKnob(GateStoreKeys.K_BASE_WAIT, it) }
                 }
-                knobField("Wait increment (s)", cfg.waitIncrementSec, def.waitIncrementSec) {
+                knobField("Wait increment", cfg.waitIncrementSec) {
                     scope.launch { store.setKnob(GateStoreKeys.K_WAIT_INC, it) }
-                }
-                knobField("Session hard limit (s)", cfg.sessionHardLimitSec, def.sessionHardLimitSec) {
-                    scope.launch { store.setKnob(GateStoreKeys.K_HARD_LIMIT, it) }
-                }
-                intKnobField("Reset hour (0-23)", cfg.resetHour, def.resetHour, 0, 23) {
-                    scope.launch {
-                        store.setKnob(GateStoreKeys.K_RESET_HOUR, it)
-                        GateAlarms.scheduleMidnight(store.appContext, it, cfg.resetMinute)
-                    }
-                }
-                intKnobField("Reset minute (0-59)", cfg.resetMinute, def.resetMinute, 0, 59) {
-                    scope.launch {
-                        store.setKnob(GateStoreKeys.K_RESET_MINUTE, it)
-                        GateAlarms.scheduleMidnight(store.appContext, cfg.resetHour, it)
-                    }
                 }
             }
         }

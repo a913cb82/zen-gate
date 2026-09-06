@@ -27,11 +27,15 @@ object GateState {
 
     @Volatile var drainEnterElapsedMs: Long = 0L
 
-    @Volatile var sessionSegmentStartElapsedMs: Long = 0L
-
     @Volatile var ignorePkg: String? = null
 
     @Volatile var ignoreUntilElapsedMs: Long = 0L
+
+    @Volatile var dayId: String = ""
+
+    @Volatile var lastRefillMs: Long = 0L
+
+    @Volatile var sessionPending: Boolean = false
 
     fun poolState(): com.abrai.zengate.policy.PoolState =
         com.abrai.zengate.policy.PoolState(
@@ -39,8 +43,8 @@ object GateState {
             usagesToday = usagesToday,
             dayId = dayId,
             lastRefillWallMs = lastRefillMs,
-            sessionStartWallMs = sessionStartMs,
-            sessionScreenOnMs = sessionScreenOnMs,
+            sessionExpiryWallMs = sessionExpiryMs,
+            sessionPending = sessionPending,
         )
 
     /** Write-through: every store write pairs with this so readers never see stale state. */
@@ -49,15 +53,7 @@ object GateState {
         usagesToday = state.usagesToday
         dayId = state.dayId
         lastRefillMs = state.lastRefillWallMs
-        sessionStartMs = state.sessionStartWallMs
-        sessionScreenOnMs = state.sessionScreenOnMs
+        sessionExpiryMs = state.sessionExpiryWallMs
+        sessionPending = state.sessionPending
     }
-
-    @Volatile var dayId: String = ""
-
-    @Volatile var lastRefillMs: Long = 0L
-
-    @Volatile var sessionStartMs: Long = 0L
-
-    @Volatile var sessionScreenOnMs: Long = 0L
 }

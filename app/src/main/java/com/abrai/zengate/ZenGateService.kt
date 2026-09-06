@@ -9,6 +9,7 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.inputmethod.InputMethodManager
 import com.abrai.zengate.policy.GatePolicy
 import com.abrai.zengate.policy.PoolEngine
+import com.abrai.zengate.policy.ZenConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -38,14 +39,14 @@ class ZenGateService : AccessibilityService() {
         } catch (t: Throwable) {
             Log.e(TAG, "presence ensure failed", t)
         }
-        Log.d(TAG, "connected; enabledImes=${enabledImes()}")
+        Log.d(TAG, "connected; enabledImes=${imePackages()}")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         try {
             val pkg = event.packageName?.toString().orEmpty()
-            val gated = GatePolicy.isGated(pkg, packageName, enabledImes(), GateState.userWhitelist)
+            val gated = GatePolicy.isGated(pkg, packageName, imePackages(), GateState.userWhitelist)
             Log.d(TAG, "foreground=$pkg gated=$gated")
             if (!gated) {
                 settleDrain()
@@ -86,12 +87,19 @@ class ZenGateService : AccessibilityService() {
         if (PoolEngine.hasSession(cur)) {
             // Event-driven expiry (alarm is the backstop for the no-events case).
             if (PoolEngine.sessionRemainingMs(cur, wall, cfg) <= 0) {
-                cur = cur.copy(sessionStartWallMs = 0L, sessionScreenOnMs = 0L)
+                cur = cur.copy(sessionExpiryWallMs = 0L)
             } else {
                 GateState.lastGatedPkg = pkg
                 persist(cur)
                 return
             }
+        }
+        if (cur.sessionPending) {
+            // Session ended while whitelisted: the next gated entry blocks (no pool grace).
+            cur = cur.copy(sessionPending = false)
+            persist(cur)
+            launchBlock(pkg, cur, cfg)
+            return
         }
         if (pkg != GateState.lastGatedPkg) {
             settleDrainLocked(cur, elapsed)
@@ -99,13 +107,18 @@ class ZenGateService : AccessibilityService() {
             GateState.lastGatedPkg = pkg
             GateState.drainEnterElapsedMs = 0L
         }
+        Log.d(
+            TAG,
+            "verdict pkg=$pkg pool=${cur.poolSec} usages=${cur.usagesToday} " +
+                "launcher=${pkg in launcherPkgs()} whitelist=${pkg in GateState.userWhitelist}",
+        )
         if (pkg in launcherPkgs()) {
             // Transit surface: never drains, but an empty pool still blocks here.
             GateState.drainEnterElapsedMs = 0L
             GateAlarms.cancelPoolExpiry(this)
             persist(cur)
-            if (cur.poolSec > 0) return
-        } else if (cur.poolSec > 0) {
+            if (PoolEngine.enterVerdict(cur.poolSec) == PoolEngine.EnterVerdict.DRAIN) return
+        } else if (PoolEngine.enterVerdict(cur.poolSec) == PoolEngine.EnterVerdict.DRAIN) {
             if (GateState.drainEnterElapsedMs == 0L) {
                 GateState.drainEnterElapsedMs = elapsed
                 GateAlarms.schedulePoolExpiry(this, cur.poolSec * 1_000)
@@ -116,6 +129,14 @@ class ZenGateService : AccessibilityService() {
         GateState.drainEnterElapsedMs = 0L
         GateAlarms.cancelPoolExpiry(this)
         persist(cur)
+        launchBlock(pkg, cur, cfg)
+    }
+
+    private fun launchBlock(
+        pkg: String,
+        cur: com.abrai.zengate.policy.PoolState,
+        cfg: ZenConfig,
+    ) {
         startActivity(
             Intent(this, BlockActivity::class.java)
                 .putExtra(BlockActivity.EXTRA_PACKAGE, pkg)
@@ -148,21 +169,24 @@ class ZenGateService : AccessibilityService() {
 
     private fun persist(state: com.abrai.zengate.policy.PoolState) {
         // Mirror converges via GateService collector; persist for durability.
-        GateState.poolSec = state.poolSec
-        GateState.usagesToday = state.usagesToday
-        GateState.dayId = state.dayId
-        GateState.lastRefillMs = state.lastRefillWallMs
-        GateState.sessionStartMs = state.sessionStartWallMs
-        GateState.sessionScreenOnMs = state.sessionScreenOnMs
+        GateState.applyPool(state)
         scope.launch { store.savePool(state) }
     }
 
     /** Keyboards are OS surfaces like SystemUI: never gated, resolved live (no hardcoding). */
-    private fun enabledImes(): Set<String> {
+    private fun imePackages(): Set<String> {
         val now = SystemClock.elapsedRealtime()
         if (cachedImes.isEmpty() || now - imeCacheAt > IME_CACHE_TTL_MS) {
             val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-            cachedImes = imm.enabledInputMethodList.map { it.packageName }.toSet()
+            val enabled = imm.enabledInputMethodList.map { it.packageName }.toSet()
+            val declared =
+                packageManager
+                    .queryIntentServices(
+                        android.content.Intent(android.view.inputmethod.InputMethod.SERVICE_INTERFACE),
+                        0,
+                    ).map { it.serviceInfo.packageName }
+                    .toSet()
+            cachedImes = enabled + declared
             imeCacheAt = now
         }
         return cachedImes

@@ -48,14 +48,21 @@ class SupervisorReceiver : BroadcastReceiver() {
                 GateState.applyPool(cur)
                 store.savePool(cur)
                 GateState.drainEnterElapsedMs = 0L
-                maybeBlock(context, cur, cfg, enabled)
+                // Pool-empty is its own pending state: if the screen is off, the next
+                // gated entry blocks naturally. Only launch over a lit screen.
+                if (isInteractive(context)) {
+                    maybeBlock(context, cur, cfg, enabled)
+                }
             }
             GateAlarms.ACTION_SESSION_END -> {
                 if (PoolEngine.sessionRemainingMs(snap, System.currentTimeMillis(), cfg) > 0) return
-                val cleared = snap.copy(sessionStartWallMs = 0L, sessionScreenOnMs = 0L)
+                val cleared = snap.copy(sessionExpiryWallMs = 0L, sessionPending = true)
                 GateState.applyPool(cleared)
                 store.savePool(cleared)
-                maybeBlock(context, cleared, cfg, enabled)
+                Log.d(TAG, "session ended; pending block armed")
+                if (isInteractive(context)) {
+                    maybeBlock(context, cleared, cfg, enabled)
+                }
             }
             GateAlarms.ACTION_MIDNIGHT -> {
                 val now = System.currentTimeMillis()
@@ -72,6 +79,11 @@ class SupervisorReceiver : BroadcastReceiver() {
                 Log.d(TAG, "gate service (re)started from alarm")
             }
         }
+    }
+
+    private fun isInteractive(context: Context): Boolean {
+        val power = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        return power.isInteractive
     }
 
     private fun maybeBlock(

@@ -86,17 +86,10 @@ class BlockActivity : ComponentActivity() {
                                     .unlock(base, wall, cfg)
                             store.savePool(unlocked)
                             GateState.applyPool(unlocked)
-                            GateState.sessionSegmentStartElapsedMs = SystemClock.elapsedRealtime()
                             Log.d(TAG, "unlock pkg=$pkg usages=${unlocked.usagesToday} pool=${unlocked.poolSec}")
                             GateAlarms.scheduleSessionEnd(
                                 this@BlockActivity,
                                 cfg.sessionAllowSec * 1_000,
-                                hard = false,
-                            )
-                            GateAlarms.scheduleSessionEnd(
-                                this@BlockActivity,
-                                cfg.sessionHardLimitSec * 1_000,
-                                hard = true,
                             )
                             GateState.ignorePkg = pkg
                             GateState.ignoreUntilElapsedMs = SystemClock.elapsedRealtime() + IGNORE_MS

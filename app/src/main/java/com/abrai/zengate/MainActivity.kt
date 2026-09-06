@@ -8,6 +8,7 @@ import android.graphics.drawable.Drawable
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -45,6 +46,9 @@ import kotlinx.coroutines.launch
 
 /** M4: home + whitelist picker + knobs. All persisted in DataStore, effective immediately. */
 class MainActivity : ComponentActivity() {
+    private val notifPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // The gate needs foreground presence (ScreenZen-shape): ensure it on every launch.
@@ -68,9 +72,51 @@ class MainActivity : ComponentActivity() {
                 when (screen) {
                     "picker" -> pickerScreen(store, onBack = { screen = "home" })
                     "knobs" -> knobsScreen(store, onBack = { screen = "home" })
-                    else -> homeScreen(store, onPicker = { screen = "picker" }, onKnobs = { screen = "knobs" })
+                    "setup" ->
+                        setupScreen(
+                            store,
+                            onBack = { screen = "home" },
+                            onFix = { id -> fixCheck(id) },
+                        )
+                    else ->
+                        homeScreen(
+                            store,
+                            onPicker = { screen = "picker" },
+                            onKnobs = { screen = "knobs" },
+                            onSetup = { screen = "setup" },
+                        )
                 }
             }
+        }
+    }
+
+    private fun fixCheck(id: String) {
+        when (id) {
+            SetupChecks.ID_A11Y -> startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            SetupChecks.ID_USAGE -> startActivity(Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS))
+            SetupChecks.ID_BATTERY ->
+                startActivity(
+                    Intent(
+                        android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                        android.net.Uri.parse("package:$packageName"),
+                    ),
+                )
+            SetupChecks.ID_EXACT ->
+                startActivity(
+                    Intent(
+                        android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                        android.net.Uri.parse("package:$packageName"),
+                    ),
+                )
+            SetupChecks.ID_NOTIFICATIONS ->
+                notifPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            else ->
+                startActivity(
+                    Intent(
+                        android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        android.net.Uri.parse("package:$packageName"),
+                    ),
+                )
         }
     }
 }
@@ -80,18 +126,28 @@ private fun homeScreen(
     store: GateStore,
     onPicker: () -> Unit,
     onKnobs: () -> Unit,
+    onSetup: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val enabled by store.enabled.collectAsState(initial = true)
     val whitelist by store.whitelist.collectAsState(initial = emptySet())
+    val context = store.appContext
+    val missing = remember { mutableStateOf(-1) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        missing.value = SetupChecks.missingAutoCount(context)
+    }
     Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(if (enabled) "Zen Gate: ON" else "Zen Gate: PAUSED")
         Text("${whitelist.size} apps whitelisted")
+        if (missing.value > 0) {
+            Text("${missing.value} setup items need attention")
+        }
         Button(onClick = { scope.launch { store.setEnabled(!enabled) } }) {
             Text(if (enabled) "Disable gate" else "Enable gate")
         }
         Button(onClick = onPicker) { Text("Whitelisted apps") }
         Button(onClick = onKnobs) { Text("Timings") }
+        Button(onClick = onSetup) { Text("Setup checklist") }
     }
 }
 
@@ -291,5 +347,44 @@ private fun knobField(
             singleLine = true,
             modifier = Modifier.width(110.dp),
         )
+    }
+}
+
+@Composable
+private fun setupScreen(
+    store: GateStore,
+    onBack: () -> Unit,
+    onFix: (String) -> Unit,
+) {
+    val context = store.appContext
+    var refresh by remember { mutableStateOf(0) }
+    val checks = remember(refresh) { SetupChecks.all(context) }
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Button(onClick = onBack) { Text("Back") }
+            Spacer(Modifier.width(12.dp))
+            Button(onClick = { refresh++ }) { Text("Refresh") }
+        }
+        Spacer(Modifier.height(8.dp))
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(checks, key = { it.id }) { check ->
+                Column(Modifier.fillMaxWidth()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        val dot =
+                            when (check.status) {
+                                CheckStatus.OK -> "● "
+                                CheckStatus.MISSING -> "○ "
+                                CheckStatus.MANUAL -> "◐ "
+                            }
+                        Text(dot + check.label, modifier = Modifier.weight(1f))
+                        if (check.status != CheckStatus.OK) {
+                            Spacer(Modifier.width(8.dp))
+                            Button(onClick = { onFix(check.id) }) { Text("Fix") }
+                        }
+                    }
+                    Text(check.detail, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
     }
 }

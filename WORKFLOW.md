@@ -34,6 +34,10 @@ phone tapping. Distilled from the screen-time build (2026-09-06).
    If an install hangs with no `AdbInstallActivity` in logcat: wake the phone
    (`input keyevent 224` — dozing stalls verification), and if still stuck,
    kill the stale client and retry (a wedged session blocks the next one).
+   `screen_off_timeout` is ignored by HyperOS; use `svc power stayon true`
+   while USB-plugged for dev (revert with `false` after). Hard boundary: a
+   LOCKED phone cannot be unlocked over adb — UI verification needs it
+   unlocked; detection/alarms/screenshots work fine locked.
    Bump `versionCode` on every installed build; verify `lastUpdateTime` after.
 3. Verify without touching the phone:
    - `adb logcat -c` then drive transitions (`monkey -p <pkg>`, `am start -n`,

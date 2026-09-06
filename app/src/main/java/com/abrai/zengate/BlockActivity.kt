@@ -44,12 +44,15 @@ class BlockActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 val scope = rememberCoroutineScope()
+                val waitSec = intent.getIntExtra(EXTRA_WAIT_SEC, WAIT_SEC).coerceAtLeast(1)
+                val sessionMs = intent.getLongExtra(EXTRA_SESSION_MS, SESSION_MS).coerceAtLeast(1_000L)
                 blockScreen(
                     blockedPkg = intent.getStringExtra(EXTRA_PACKAGE).orEmpty(),
+                    waitSec = waitSec,
                     onUnlock = { pkg ->
                         scope.launch {
                             GateStore(this@BlockActivity)
-                                .setSessionExpiryMs(System.currentTimeMillis() + SESSION_MS)
+                                .setSessionExpiryMs(System.currentTimeMillis() + sessionMs)
                             GateState.ignorePkg = pkg
                             GateState.ignoreUntilElapsedMs = SystemClock.elapsedRealtime() + IGNORE_MS
                             launchBlocked(pkg)
@@ -88,6 +91,10 @@ class BlockActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_PACKAGE = "blocked_package"
+
+        // Test hooks: adb can launch the block with short limits without touching product constants.
+        const val EXTRA_WAIT_SEC = "wait_sec"
+        const val EXTRA_SESSION_MS = "session_ms"
         const val WAIT_SEC = 30
         const val SESSION_MS = 300_000L
         private const val IGNORE_MS = 3_000L
@@ -99,9 +106,10 @@ class BlockActivity : ComponentActivity() {
 @Composable
 private fun blockScreen(
     blockedPkg: String,
+    waitSec: Int,
     onUnlock: (String) -> Unit,
 ) {
-    var remaining by remember { mutableIntStateOf(BlockActivity.WAIT_SEC) }
+    var remaining by remember { mutableIntStateOf(waitSec) }
     LaunchedEffect(Unit) {
         while (remaining > 0) {
             delay(1_000)

@@ -47,6 +47,7 @@ class ZenGateService : AccessibilityService() {
         try {
             val pkg = event.packageName?.toString().orEmpty()
             GateState.lastForegroundPkg = pkg.ifEmpty { null }
+            GateState.lastForegroundElapsedMs = SystemClock.elapsedRealtime()
             val gated = GatePolicy.isGated(pkg, packageName, imePackages(), GateState.userWhitelist)
             Log.d(TAG, "foreground=$pkg gated=$gated")
             if (!gated) {

@@ -180,16 +180,21 @@ private fun blockScreen(
     onUnlock: (String) -> Unit,
 ) {
     var remaining by remember(resetKey) { mutableIntStateOf(waitSec) }
-    LaunchedEffect(resetKey) {
-        while (remaining > 0) {
-            delay(1_000)
-            // A phone unlock can grant grace while this screen shows (lock with
-            // block visible, then unlock): the block is stale, dismiss it.
+    // Stale-block watcher: runs for the whole composition (the countdown above
+    // exits once the wait completes, but a later unlock must still dismiss).
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(500)
             if (GateState.poolSec > 0) {
                 Log.d("ZenGate", "grace granted under block; dismissing")
                 onStale()
                 return@LaunchedEffect
             }
+        }
+    }
+    LaunchedEffect(resetKey) {
+        while (remaining > 0) {
+            delay(1_000)
             remaining--
         }
         Log.d("ZenGate", "wait complete pkg=$blockedPkg")

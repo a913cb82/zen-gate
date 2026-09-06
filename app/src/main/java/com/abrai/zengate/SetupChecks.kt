@@ -46,7 +46,7 @@ object SetupChecks {
                 ID_USAGE,
                 "Usage access",
                 auto(hasUsageAccess(context)),
-                "Backup detector if the accessibility feed ever stalls.",
+                "Tells the gate what is on screen when a timer fires (HyperOS blinds the faster path).",
             ),
             SetupCheck(
                 ID_BATTERY,

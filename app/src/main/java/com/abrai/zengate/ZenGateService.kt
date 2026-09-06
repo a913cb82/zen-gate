@@ -146,18 +146,22 @@ class ZenGateService : AccessibilityService() {
             userWhitelist: Set<String>,
             keyguardLocked: Boolean,
             interactive: Boolean,
+            usageFgPkg: String?,
         ): DeadlineVerdict.Outcome {
             val svc = instance
             if (svc == null) {
                 Log.d(TAG, "deadline undecidable: gate blind")
                 return DeadlineVerdict.Outcome.Skip
             }
-            val root =
+            // Usage events are system truth (reveal-safe, secure-window-safe);
+            // the a11y root is a fallback for ROMs where it resolves.
+            val a11yRoot =
                 try {
                     svc.rootInActiveWindow?.packageName?.toString()
                 } catch (t: Throwable) {
                     null
                 }
+            val root = usageFgPkg ?: a11yRoot
             val v =
                 DeadlineVerdict.decide(
                     enabled,

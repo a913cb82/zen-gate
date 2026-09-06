@@ -221,6 +221,9 @@ class GateService : Service() {
                 val power = getSystemService(PowerManager::class.java)
                 val keys = getSystemService(KeyguardManager::class.java)
                 val remaining = PoolEngine.sessionRemainingMs(snap, wall, cfg)
+                val usageFg =
+                    com.abrai.zengate.policy.UsageOracle
+                        .queryForeground(this@GateService)
                 when (
                     val v =
                         ZenGateService.decideDeadline(
@@ -230,6 +233,7 @@ class GateService : Service() {
                             list,
                             keys.isKeyguardLocked,
                             power.isInteractive,
+                            usageFg,
                         )
                 ) {
                     is com.abrai.zengate.policy.DeadlineVerdict.Outcome.Launch -> {

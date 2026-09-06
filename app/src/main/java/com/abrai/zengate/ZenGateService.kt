@@ -18,16 +18,21 @@ class ZenGateService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
-        val pkg = event.packageName?.toString().orEmpty()
-        val gated = GatePolicy.isGated(pkg, packageName, enabledImes())
-        Log.d(TAG, "foreground=$pkg gated=$gated")
-        if (!gated) return
-        // Collapse toast bursts from multi-window transitions (M2 adds a real isShowing guard).
-        val now = SystemClock.elapsedRealtime()
-        if (pkg == lastToastPkg && now - lastToastAt < TOAST_DEBOUNCE_MS) return
-        lastToastPkg = pkg
-        lastToastAt = now
-        Toast.makeText(this, "ZenGate M1: $pkg gated", Toast.LENGTH_SHORT).show()
+        try {
+            val pkg = event.packageName?.toString().orEmpty()
+            val gated = GatePolicy.isGated(pkg, packageName, enabledImes())
+            Log.d(TAG, "foreground=$pkg gated=$gated")
+            if (!gated) return
+            // Collapse toast bursts from multi-window transitions (M2 adds a real isShowing guard).
+            val now = SystemClock.elapsedRealtime()
+            if (pkg == lastToastPkg && now - lastToastAt < TOAST_DEBOUNCE_MS) return
+            lastToastPkg = pkg
+            lastToastAt = now
+            Toast.makeText(this, "ZenGate M1: $pkg gated", Toast.LENGTH_SHORT).show()
+        } catch (t: Throwable) {
+            // A gate must never die: log and survive (HyperOS intercepts toasts for sideloaded apps).
+            Log.e(TAG, "event handling failed", t)
+        }
     }
 
     override fun onServiceConnected() {

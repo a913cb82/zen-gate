@@ -69,6 +69,11 @@ class ZenGateService : AccessibilityService() {
             persist(cur)
             return
         }
+        Log.d(
+            TAG,
+            "mirror pool=${cur.poolSec} usages=${cur.usagesToday} day=${cur.dayId} " +
+                "sessStart=${cur.sessionStartWallMs} accum=${cur.sessionScreenOnMs}",
+        )
         if (PoolEngine.hasSession(cur)) {
             // Event-driven expiry (alarm is the backstop for the no-events case).
             if (PoolEngine.sessionRemainingMs(cur, wall, cfg) <= 0) {

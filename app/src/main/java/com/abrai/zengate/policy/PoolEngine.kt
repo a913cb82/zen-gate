@@ -20,8 +20,6 @@ data class PoolState(
     val usagesToday: Int = 0,
     val dayId: String = "",
     val sessionExpiryWallMs: Long = 0L,
-    /** Alternating unlock grant: false -> grace pool, true -> timed session. */
-    val sessionDue: Boolean = false,
 )
 
 /**
@@ -46,27 +44,30 @@ object PoolEngine {
     ): Long = cfg.baseWaitSec + cfg.waitIncrementSec * state.usagesToday
 
     /**
-     * Unlock alternates: first Open grants the grace pool (free use, no session),
-     * the next Open (after the grace drains back to a block) grants the session.
+     * Phone unlock (fingerprint): outside a session this grants the grace pool —
+     * 10s of free use before the block. Inside a session it changes nothing.
      */
+    fun phoneUnlock(
+        state: PoolState,
+        nowWallMs: Long = 0L,
+        cfg: ZenConfig = ZenConfig(),
+    ): PoolState =
+        if (sessionRemainingMs(state, nowWallMs, cfg) > 0) {
+            state
+        } else {
+            state.copy(poolSec = state.poolSec.coerceAtLeast(cfg.unlockPoolSec))
+        }
+
+    /** Open tap: count it and start the timed session. The pool is untouched. */
     fun unlock(
         state: PoolState,
         nowWallMs: Long,
         cfg: ZenConfig = ZenConfig(),
     ): PoolState =
-        if (state.sessionDue) {
-            state.copy(
-                usagesToday = state.usagesToday + 1,
-                sessionExpiryWallMs = nowWallMs + cfg.sessionAllowSec * 1_000,
-                sessionDue = false,
-            )
-        } else {
-            state.copy(
-                usagesToday = state.usagesToday + 1,
-                sessionDue = true,
-                poolSec = state.poolSec.coerceAtLeast(cfg.unlockPoolSec),
-            )
-        }
+        state.copy(
+            usagesToday = state.usagesToday + 1,
+            sessionExpiryWallMs = nowWallMs + cfg.sessionAllowSec * 1_000,
+        )
 
     /** Session end: clear the deadline; the pool is left alone (block follows). */
     fun endSession(state: PoolState): PoolState = state.copy(sessionExpiryWallMs = 0L)
@@ -94,7 +95,6 @@ object PoolEngine {
             usagesToday = 0,
             dayId = todayId,
             sessionExpiryWallMs = 0L,
-            sessionDue = false,
         )
 
     fun needsMidnightReset(

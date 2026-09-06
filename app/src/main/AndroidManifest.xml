@@ -71,7 +71,11 @@
             </intent-filter>
         </receiver>
 
-        <receiver android:name=".SupervisorReceiver" android:exported="false" />
+        <receiver android:name=".SupervisorReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.USER_PRESENT" />
+            </intent-filter>
+        </receiver>
 
         <activity
             android:name=".BlockActivity"

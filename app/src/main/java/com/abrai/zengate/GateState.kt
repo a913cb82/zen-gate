@@ -33,15 +33,12 @@ object GateState {
 
     @Volatile var dayId: String = ""
 
-    @Volatile var sessionDue: Boolean = false
-
     fun poolState(): com.abrai.zengate.policy.PoolState =
         com.abrai.zengate.policy.PoolState(
             poolSec = poolSec,
             usagesToday = usagesToday,
             dayId = dayId,
             sessionExpiryWallMs = sessionExpiryMs,
-            sessionDue = sessionDue,
         )
 
     /** Write-through: every store write pairs with this so readers never see stale state. */
@@ -50,6 +47,5 @@ object GateState {
         usagesToday = state.usagesToday
         dayId = state.dayId
         sessionExpiryMs = state.sessionExpiryWallMs
-        sessionDue = state.sessionDue
     }
 }

@@ -104,12 +104,9 @@ class ZenGateService : AccessibilityService() {
                 "launcher=${pkg in launcherPkgs()} whitelist=${pkg in GateState.userWhitelist}",
         )
         if (pkg in launcherPkgs()) {
-            // Transit surface: never drains, but an empty pool still blocks here.
-            GateState.drainEnterElapsedMs = 0L
-            GateAlarms.cancelPoolExpiry(this)
-            persist(cur)
-            if (PoolEngine.enterVerdict(cur.poolSec) == PoolEngine.EnterVerdict.DRAIN) return
-        } else if (PoolEngine.enterVerdict(cur.poolSec) == PoolEngine.EnterVerdict.DRAIN) {
+            Log.d(TAG, "launcher entry pkg=$pkg pool=${cur.poolSec}")
+        }
+        if (PoolEngine.enterVerdict(cur.poolSec) == PoolEngine.EnterVerdict.DRAIN) {
             if (GateState.drainEnterElapsedMs == 0L) {
                 GateState.drainEnterElapsedMs = elapsed
                 GateAlarms.schedulePoolExpiry(this, cur.poolSec * 1_000)
@@ -150,6 +147,11 @@ class ZenGateService : AccessibilityService() {
         cur: com.abrai.zengate.policy.PoolState,
         elapsed: Long,
     ) {
+        // No open segment (fresh grant, post-block, launcher transit): nothing owed.
+        if (GateState.drainEnterElapsedMs == 0L) {
+            GateAlarms.cancelPoolExpiry(this)
+            return
+        }
         val spent = ((elapsed - GateState.drainEnterElapsedMs) / 1_000).coerceAtLeast(0)
         GateState.drainEnterElapsedMs = 0L
         GateAlarms.cancelPoolExpiry(this)

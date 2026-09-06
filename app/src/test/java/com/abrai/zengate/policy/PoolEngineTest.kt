@@ -26,21 +26,25 @@ class PoolEngineTest {
     }
 
     @Test
-    fun `unlock grants grace pool when session not due`() {
-        val out = PoolEngine.unlock(PoolState(poolSec = 0, usagesToday = 2, sessionDue = false), t0, cfg)
-        assertEquals(3, out.usagesToday)
+    fun `phone unlock outside session grants grace pool`() {
+        val out = PoolEngine.phoneUnlock(PoolState(poolSec = 0, usagesToday = 2), t0, cfg)
         assertEquals(10, out.poolSec)
+        assertEquals(2, out.usagesToday)
         assertEquals(0, out.sessionExpiryWallMs)
-        assertTrue(out.sessionDue)
     }
 
     @Test
-    fun `unlock grants session when session due`() {
-        val out = PoolEngine.unlock(PoolState(poolSec = 0, usagesToday = 2, sessionDue = true), t0, cfg)
+    fun `phone unlock inside session leaves pool alone`() {
+        val s = PoolState(poolSec = 0, usagesToday = 2, sessionExpiryWallMs = t0 + 300_000)
+        assertEquals(s, PoolEngine.phoneUnlock(s, t0, cfg))
+    }
+
+    @Test
+    fun `open tap grants session only, pool untouched`() {
+        val out = PoolEngine.unlock(PoolState(poolSec = 0, usagesToday = 2), t0, cfg)
         assertEquals(3, out.usagesToday)
         assertEquals(0, out.poolSec)
         assertEquals(t0 + 300_000, out.sessionExpiryWallMs)
-        assertFalse(out.sessionDue)
     }
 
     @Test

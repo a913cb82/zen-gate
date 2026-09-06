@@ -43,6 +43,16 @@ class SupervisorReceiver : BroadcastReceiver() {
         val enabled = store.enabled.first()
         val cfg = store.config.first()
         when (action) {
+            Intent.ACTION_USER_PRESENT -> {
+                // Phone unlock: outside a session this grants the grace pool
+                // (10s free use before the block); inside one it changes nothing.
+                val cur = PoolEngine.phoneUnlock(snap, System.currentTimeMillis(), cfg)
+                if (cur != snap) {
+                    GateState.applyPool(cur)
+                    store.savePool(cur)
+                    Log.d(TAG, "phone unlock; grace pool=${cur.poolSec}")
+                }
+            }
             GateAlarms.ACTION_POOL_EXPIRED -> {
                 val cur = snap.copy(poolSec = 0)
                 GateState.applyPool(cur)

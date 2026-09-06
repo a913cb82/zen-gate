@@ -10,12 +10,10 @@ repos:
       - id: check-merge-conflict
       - id: mixed-line-ending
         args: ['--fix=lf']
-  # Kotlin lint (ktlint via Gradle) is wired here once the M1 scaffold lands.
-  # Placeholder local hook — uncomment after verifying ./gradlew ktlintCheck:
-  # - repo: local
-  #   hooks:
-  #     - id: ktlint
-  #       name: ktlint
-  #       entry: ./gradlew -q ktlintCheck
-  #       language: system
-  #       pass_filenames: false
+  - repo: local
+    hooks:
+      - id: ktlint
+        name: ktlint
+        entry: ./gradlew -q ktlintCheck
+        language: system
+        pass_filenames: false

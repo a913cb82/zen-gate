@@ -5,15 +5,19 @@ package com.abrai.zengate.policy
  * user whitelist arrives in M4. No Android imports — unit-testable headless.
  */
 object GatePolicy {
-    val survivalPackages: Set<String> = setOf(
-        "com.android.server.telecom",
-        "com.android.incallui",
-        "com.android.emergency",
-        "com.android.systemui",
-        "com.google.android.deskclock",
-    )
+    val survivalPackages: Set<String> =
+        setOf(
+            "com.android.server.telecom",
+            "com.android.incallui",
+            "com.android.emergency",
+            "com.android.systemui",
+            "com.google.android.deskclock",
+        )
 
-    fun isGated(foregroundPackage: String, ownPackage: String): Boolean {
+    fun isGated(
+        foregroundPackage: String,
+        ownPackage: String,
+    ): Boolean {
         if (foregroundPackage.isEmpty()) return false
         if (foregroundPackage == ownPackage) return false
         return foregroundPackage !in survivalPackages

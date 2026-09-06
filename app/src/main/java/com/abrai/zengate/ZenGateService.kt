@@ -28,6 +28,15 @@ class ZenGateService : AccessibilityService() {
 
     override fun onServiceConnected() {
         store = GateStore(this)
+        // The mirror only loads while GateService runs: guarantee it here so the
+        // gate can never idle on a cold mirror (M3 lesson). MainActivity + boot
+        // cover the remaining paths; failures are logged, never fatal.
+        try {
+            startForegroundService(Intent(this, GateService::class.java))
+            Log.d(TAG, "foreground presence ensured from accessibility bind")
+        } catch (t: Throwable) {
+            Log.e(TAG, "presence ensure failed", t)
+        }
         Log.d(TAG, "connected; enabledImes=${enabledImes()}")
     }
 

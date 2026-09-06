@@ -17,6 +17,8 @@ class ZenGateService : AccessibilityService() {
     private var lastToastAt: Long = 0
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        // TEMP DIAGNOSTIC (M1): log every event type to bisect HyperOS dispatch.
+        Log.d(TAG, "raw type=${event?.eventType} pkg=${event?.packageName}")
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         try {
             val pkg = event.packageName?.toString().orEmpty()

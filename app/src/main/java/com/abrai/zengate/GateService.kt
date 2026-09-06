@@ -61,6 +61,7 @@ class GateService : Service() {
                 GateState.lastRefillMs = snap.lastRefillMs
                 GateState.sessionStartMs = snap.sessionStartMs
                 GateState.sessionScreenOnMs = snap.sessionScreenOnMs
+                GateState.storeLoaded = true
                 if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
                     android.content.pm.PackageManager.PERMISSION_GRANTED
                 ) {
@@ -106,6 +107,7 @@ class GateService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun onScreenOff() {
+        if (!GateState.storeLoaded) return
         val elapsed = SystemClock.elapsedRealtime()
         val wall = System.currentTimeMillis()
         scope.launch {
@@ -138,6 +140,7 @@ class GateService : Service() {
     }
 
     private fun onScreenOn() {
+        if (!GateState.storeLoaded) return
         val elapsed = SystemClock.elapsedRealtime()
         val wall = System.currentTimeMillis()
         scope.launch {

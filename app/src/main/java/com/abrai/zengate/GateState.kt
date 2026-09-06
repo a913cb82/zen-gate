@@ -8,6 +8,9 @@ package com.abrai.zengate
 object GateState {
     @Volatile var enabled: Boolean = true
 
+    /** True once GateService has mirrored the store. Persist/decide gates on this. */
+    @Volatile var storeLoaded: Boolean = false
+
     @Volatile var sessionExpiryMs: Long = 0L
 
     @Volatile var poolSec: Long = 10

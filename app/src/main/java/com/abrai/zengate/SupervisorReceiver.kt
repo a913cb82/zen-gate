@@ -8,6 +8,7 @@ import com.abrai.zengate.policy.PoolEngine
 import com.abrai.zengate.policy.ZenConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -37,21 +38,24 @@ class SupervisorReceiver : BroadcastReceiver() {
     ) {
         val store = GateStore(context)
         val cfg = ZenConfig()
+        // Store-direct: receivers can run in a fresh process whose mirror never loaded.
+        // Reading the file (not the mirror) makes clobbering with defaults impossible.
+        val snap = store.snapshot.first().poolState()
+        val enabled = store.enabled.first()
         when (action) {
             GateAlarms.ACTION_POOL_EXPIRED -> {
-                val cur = GateState.poolState().copy(poolSec = 0)
+                val cur = snap.copy(poolSec = 0)
                 GateState.applyPool(cur)
                 store.savePool(cur)
                 GateState.drainEnterElapsedMs = 0L
-                maybeBlock(context, cur, cfg)
+                maybeBlock(context, cur, cfg, enabled)
             }
             GateAlarms.ACTION_SESSION_END -> {
-                val cur = GateState.poolState()
-                if (PoolEngine.sessionRemainingMs(cur, System.currentTimeMillis(), cfg) > 0) return
-                val cleared = cur.copy(sessionStartWallMs = 0L, sessionScreenOnMs = 0L)
+                if (PoolEngine.sessionRemainingMs(snap, System.currentTimeMillis(), cfg) > 0) return
+                val cleared = snap.copy(sessionStartWallMs = 0L, sessionScreenOnMs = 0L)
                 GateState.applyPool(cleared)
                 store.savePool(cleared)
-                maybeBlock(context, cleared, cfg)
+                maybeBlock(context, cleared, cfg, enabled)
             }
             GateAlarms.ACTION_MIDNIGHT -> {
                 val today = GateAlarms.todayId()
@@ -73,9 +77,10 @@ class SupervisorReceiver : BroadcastReceiver() {
         context: Context,
         state: com.abrai.zengate.policy.PoolState,
         cfg: ZenConfig,
+        enabled: Boolean,
     ) {
         val pkg = GateState.lastGatedPkg ?: return
-        if (!GateState.enabled) return
+        if (!enabled) return
         if (PoolEngine.hasSession(state) &&
             PoolEngine.sessionRemainingMs(state, System.currentTimeMillis(), cfg) > 0
         ) {

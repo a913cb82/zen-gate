@@ -55,6 +55,10 @@ class ZenGateService : AccessibilityService() {
         val cfg = ZenConfig()
         val wall = System.currentTimeMillis()
         val elapsed = SystemClock.elapsedRealtime()
+        if (!GateState.storeLoaded) {
+            Log.d(TAG, "mirror cold; skipping event for $pkg")
+            return
+        }
         var cur = GateState.poolState()
         val today = GateAlarms.todayId()
         if (cur.dayId.isEmpty()) {
@@ -113,6 +117,7 @@ class ZenGateService : AccessibilityService() {
 
     /** Deduct the open drain segment for the previous app, if any. */
     private fun settleDrain() {
+        if (!GateState.storeLoaded) return
         val elapsed = SystemClock.elapsedRealtime()
         if (GateState.lastGatedPkg == null || GateState.drainEnterElapsedMs == 0L) return
         settleDrainLocked(GateState.poolState(), elapsed)

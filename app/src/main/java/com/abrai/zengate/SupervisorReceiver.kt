@@ -102,11 +102,26 @@ class SupervisorReceiver : BroadcastReceiver() {
         cfg: ZenConfig,
         enabled: Boolean,
     ) {
-        val pkg = GateState.lastGatedPkg ?: return
+        // Launch only when the sticky last foreground is itself a gated surface:
+        // firing over a whitelisted app would break the whitelist promise, and the
+        // next gated entry blocks via the event path anyway (pool is already 0).
+        // IMEs never emit window-state events (verified in logs), so the policy
+        // check here passes an empty IME set.
+        val pkg = GateState.lastForegroundPkg ?: return
         if (!enabled) return
         if (PoolEngine.hasSession(state) &&
             PoolEngine.sessionRemainingMs(state, System.currentTimeMillis(), cfg) > 0
         ) {
+            return
+        }
+        if (!com.abrai.zengate.policy.GatePolicy.isGated(
+                pkg,
+                context.packageName,
+                emptySet(),
+                GateState.userWhitelist,
+            )
+        ) {
+            Log.d(TAG, "deadline reached on non-gated $pkg; entry path will block")
             return
         }
         context.startActivity(

@@ -58,6 +58,7 @@ class BlockActivity : ComponentActivity() {
                     blockedPkg = currentPkg.ifEmpty { intent.getStringExtra(EXTRA_PACKAGE).orEmpty() },
                     waitSec = waitSec,
                     resetKey = resetKey,
+                    onStale = { finish() },
                     onUnlock = { pkg ->
                         scope.launch {
                             val wall = System.currentTimeMillis()
@@ -175,12 +176,20 @@ private fun blockScreen(
     blockedPkg: String,
     waitSec: Int,
     resetKey: String,
+    onStale: () -> Unit,
     onUnlock: (String) -> Unit,
 ) {
     var remaining by remember(resetKey) { mutableIntStateOf(waitSec) }
     LaunchedEffect(resetKey) {
         while (remaining > 0) {
             delay(1_000)
+            // A phone unlock can grant grace while this screen shows (lock with
+            // block visible, then unlock): the block is stale, dismiss it.
+            if (GateState.poolSec > 0) {
+                Log.d("ZenGate", "grace granted under block; dismissing")
+                onStale()
+                return@LaunchedEffect
+            }
             remaining--
         }
         Log.d("ZenGate", "wait complete pkg=$blockedPkg")

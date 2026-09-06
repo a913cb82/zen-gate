@@ -46,10 +46,11 @@ class ZenGateService : AccessibilityService() {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         try {
             val pkg = event.packageName?.toString().orEmpty()
+            GateState.lastForegroundPkg = pkg.ifEmpty { null }
             val gated = GatePolicy.isGated(pkg, packageName, imePackages(), GateState.userWhitelist)
             Log.d(TAG, "foreground=$pkg gated=$gated")
             if (!gated) {
-                settleDrain()
+                settleDrain(keepDraining = true)
                 GateState.lastGatedPkg = null
                 return
             }
@@ -136,11 +137,20 @@ class ZenGateService : AccessibilityService() {
     }
 
     /** Deduct the open drain segment for the previous app, if any. */
-    private fun settleDrain() {
+    private fun settleDrain(keepDraining: Boolean = false) {
         if (!GateState.storeLoaded) return
-        val elapsed = SystemClock.elapsedRealtime()
         if (GateState.lastGatedPkg == null || GateState.drainEnterElapsedMs == 0L) return
+        val elapsed = SystemClock.elapsedRealtime()
         settleDrainLocked(GateState.poolState(), elapsed)
+        // Non-gated surfaces (whitelist, system UI) must not freeze grace: the
+        // wall-clock deduction above counts their time, and the remainder keeps
+        // draining so the block still arrives.
+        if (!keepDraining) return
+        val cur = GateState.poolState()
+        if (cur.poolSec > 0 && !PoolEngine.hasSession(cur)) {
+            GateState.drainEnterElapsedMs = elapsed
+            GateAlarms.schedulePoolExpiry(this, cur.poolSec * 1_000)
+        }
     }
 
     private fun settleDrainLocked(

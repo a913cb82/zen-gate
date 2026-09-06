@@ -25,6 +25,9 @@ object GateState {
 
     @Volatile var lastGatedPkg: String? = null
 
+    /** Sticky last foreground (any surface): alarm-time launches gate on this. */
+    @Volatile var lastForegroundPkg: String? = null
+
     @Volatile var drainEnterElapsedMs: Long = 0L
 
     @Volatile var ignorePkg: String? = null

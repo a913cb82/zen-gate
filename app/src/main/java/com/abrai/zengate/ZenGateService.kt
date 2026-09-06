@@ -30,6 +30,10 @@ class ZenGateService : AccessibilityService() {
         Toast.makeText(this, "ZenGate M1: $pkg gated", Toast.LENGTH_SHORT).show()
     }
 
+    override fun onServiceConnected() {
+        Log.d(TAG, "connected; enabledImes=${enabledImes()}")
+    }
+
     override fun onInterrupt() = Unit
 
     /** Keyboards are OS surfaces like SystemUI: never gated, resolved live (no hardcoding). */

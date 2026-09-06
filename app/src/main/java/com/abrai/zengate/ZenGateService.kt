@@ -28,7 +28,9 @@ class ZenGateService : AccessibilityService() {
             if (GatePolicy.isSessionActive(System.currentTimeMillis(), GateState.sessionExpiryMs)) return
             val now = SystemClock.elapsedRealtime()
             if (pkg == GateState.ignorePkg && now < GateState.ignoreUntilElapsedMs) return
-            if (BlockActivity.isShowing) return
+            // Always (re)launch: singleInstance + SINGLE_TOP makes repeats a harmless
+            // reorder-to-front (no stacking, no countdown reset) and recovers races where
+            // the gated app drew over the block.
             startActivity(
                 Intent(this, BlockActivity::class.java)
                     .putExtra(BlockActivity.EXTRA_PACKAGE, pkg)

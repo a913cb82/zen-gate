@@ -39,6 +39,9 @@ class BlockActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         isShowing = true
+        if (currentPkg.isEmpty()) {
+            currentPkg = intent.getStringExtra(EXTRA_PACKAGE).orEmpty()
+        }
         // Swallow Back: the wait is the only way through (kill switch lives in the shade).
         onBackPressedDispatcher.addCallback(this, AlwaysEnabledCallback())
         setContent {
@@ -46,9 +49,12 @@ class BlockActivity : ComponentActivity() {
                 val scope = rememberCoroutineScope()
                 val waitSec = intent.getIntExtra(EXTRA_WAIT_SEC, WAIT_SEC).coerceAtLeast(1)
                 val sessionMs = intent.getLongExtra(EXTRA_SESSION_MS, SESSION_MS).coerceAtLeast(1_000L)
+                // resetKey restarts the countdown only when a different package re-gates us.
+                val resetKey = currentPkg + "/" + resetCounter
                 blockScreen(
-                    blockedPkg = intent.getStringExtra(EXTRA_PACKAGE).orEmpty(),
+                    blockedPkg = currentPkg.ifEmpty { intent.getStringExtra(EXTRA_PACKAGE).orEmpty() },
                     waitSec = waitSec,
+                    resetKey = resetKey,
                     onUnlock = { pkg ->
                         scope.launch {
                             GateStore(this@BlockActivity)
@@ -66,7 +72,13 @@ class BlockActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        // Reuse the running countdown; never stack or reset it.
+        // Same package: reuse the running countdown (no strobe, no reset).
+        // Different package (launch races): re-gate for the new package.
+        val pkg = intent.getStringExtra(EXTRA_PACKAGE).orEmpty()
+        if (pkg.isNotEmpty() && pkg != currentPkg) {
+            currentPkg = pkg
+            resetCounter++
+        }
         setIntent(intent)
     }
 
@@ -100,6 +112,10 @@ class BlockActivity : ComponentActivity() {
         private const val IGNORE_MS = 3_000L
 
         @Volatile var isShowing: Boolean = false
+
+        @Volatile var currentPkg: String = ""
+
+        @Volatile var resetCounter: Int = 0
     }
 }
 
@@ -107,10 +123,11 @@ class BlockActivity : ComponentActivity() {
 private fun blockScreen(
     blockedPkg: String,
     waitSec: Int,
+    resetKey: String,
     onUnlock: (String) -> Unit,
 ) {
-    var remaining by remember { mutableIntStateOf(waitSec) }
-    LaunchedEffect(Unit) {
+    var remaining by remember(resetKey) { mutableIntStateOf(waitSec) }
+    LaunchedEffect(resetKey) {
         while (remaining > 0) {
             delay(1_000)
             remaining--

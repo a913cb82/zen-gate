@@ -17,14 +17,30 @@ class PoolEngineTest {
     }
 
     @Test
-    fun `session end tops up grace pool and clears expiry`() {
+    fun `session end clears expiry and leaves pool alone`() {
         val s = PoolState(poolSec = 0, usagesToday = 2, sessionExpiryWallMs = t0 + 300_000)
-        val out = PoolEngine.endSession(s, cfg)
+        val out = PoolEngine.endSession(s)
         assertEquals(0, out.sessionExpiryWallMs)
-        assertEquals(10, out.poolSec)
+        assertEquals(0, out.poolSec)
         assertEquals(2, out.usagesToday)
-        val rich = PoolState(poolSec = 18, sessionExpiryWallMs = t0 + 1)
-        assertEquals(18, PoolEngine.endSession(rich, cfg).poolSec)
+    }
+
+    @Test
+    fun `unlock grants grace pool when session not due`() {
+        val out = PoolEngine.unlock(PoolState(poolSec = 0, usagesToday = 2, sessionDue = false), t0, cfg)
+        assertEquals(3, out.usagesToday)
+        assertEquals(10, out.poolSec)
+        assertEquals(0, out.sessionExpiryWallMs)
+        assertTrue(out.sessionDue)
+    }
+
+    @Test
+    fun `unlock grants session when session due`() {
+        val out = PoolEngine.unlock(PoolState(poolSec = 0, usagesToday = 2, sessionDue = true), t0, cfg)
+        assertEquals(3, out.usagesToday)
+        assertEquals(0, out.poolSec)
+        assertEquals(t0 + 300_000, out.sessionExpiryWallMs)
+        assertFalse(out.sessionDue)
     }
 
     @Test
@@ -37,14 +53,6 @@ class PoolEngineTest {
     fun `penalty escalates per unlock`() {
         assertEquals(30, PoolEngine.penaltySec(PoolState(usagesToday = 0), cfg))
         assertEquals(50, PoolEngine.penaltySec(PoolState(usagesToday = 2), cfg))
-    }
-
-    @Test
-    fun `unlock sets wall-clock expiry`() {
-        val out = PoolEngine.unlock(PoolState(poolSec = 0, usagesToday = 2), t0, cfg)
-        assertEquals(3, out.usagesToday)
-        assertEquals(10, out.poolSec)
-        assertEquals(t0 + 300_000, out.sessionExpiryWallMs)
     }
 
     @Test

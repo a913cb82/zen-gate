@@ -20,6 +20,7 @@ private val Context.gateDataStore: DataStore<Preferences> by preferencesDataStor
 object GateStoreKeys {
     val ENABLED = booleanPreferencesKey("enabled")
     val SESSION_EXPIRY_MS = longPreferencesKey("session_expiry_ms")
+    val SESSION_DUE = booleanPreferencesKey("session_due")
     val POOL_SEC = longPreferencesKey("pool_sec")
     val USAGES = intPreferencesKey("usages")
     val DAY_ID = stringPreferencesKey("day_id")
@@ -39,8 +40,9 @@ data class EngineSnapshot(
     val usagesToday: Int = 0,
     val dayId: String = "",
     val sessionExpiryMs: Long = 0L,
+    val sessionDue: Boolean = false,
 ) {
-    fun poolState(): PoolState = PoolState(poolSec, usagesToday, dayId, sessionExpiryMs)
+    fun poolState(): PoolState = PoolState(poolSec, usagesToday, dayId, sessionExpiryMs, sessionDue)
 }
 
 /** Persisted gate state: engine + whitelist + knobs (M4). */
@@ -62,6 +64,7 @@ class GateStore(
                 usagesToday = it[GateStoreKeys.USAGES] ?: 0,
                 dayId = it[GateStoreKeys.DAY_ID] ?: "",
                 sessionExpiryMs = it[GateStoreKeys.SESSION_EXPIRY_MS] ?: 0L,
+                sessionDue = it[GateStoreKeys.SESSION_DUE] ?: false,
             )
         }
 
@@ -95,6 +98,7 @@ class GateStore(
             it[GateStoreKeys.USAGES] = state.usagesToday
             it[GateStoreKeys.DAY_ID] = state.dayId
             it[GateStoreKeys.SESSION_EXPIRY_MS] = state.sessionExpiryWallMs
+            it[GateStoreKeys.SESSION_DUE] = state.sessionDue
         }
     }
 

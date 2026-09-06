@@ -85,7 +85,7 @@ class ZenGateService : AccessibilityService() {
             // Event-driven expiry (alarm is the backstop for the no-events case).
             // Expiry tops up grace via endSession: the pool drains before any block.
             if (PoolEngine.sessionRemainingMs(cur, wall, cfg) <= 0) {
-                cur = PoolEngine.endSession(cur, cfg)
+                cur = PoolEngine.endSession(cur)
             } else {
                 GateState.lastGatedPkg = pkg
                 persist(cur)

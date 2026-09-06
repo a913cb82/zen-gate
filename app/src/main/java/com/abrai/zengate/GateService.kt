@@ -64,6 +64,7 @@ class GateService : Service() {
                 GateState.usagesToday = snap.usagesToday
                 GateState.dayId = snap.dayId
                 GateState.sessionExpiryMs = snap.sessionExpiryMs
+                GateState.sessionDue = snap.sessionDue
                 GateState.config = cfg
                 GateState.userWhitelist = list
                 GateState.storeLoaded = true

@@ -32,6 +32,15 @@ class GatePolicyTest {
     }
 
     @Test
+    fun `extra ignored packages are never gated`() {
+        val imes = setOf("com.google.android.inputmethod.latin", "eu.toneiv.ubktouch")
+        for (pkg in imes) {
+            assertFalse(pkg, GatePolicy.isGated(pkg, own, imes))
+        }
+        assertTrue(GatePolicy.isGated("com.instagram.android", own, imes))
+    }
+
+    @Test
     fun `dialer is gated until user whitelist lands in M4`() {
         assertTrue(GatePolicy.isGated("com.google.android.dialer", own))
     }

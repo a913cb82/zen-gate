@@ -62,6 +62,7 @@ Alarm intents need care beyond the package entry: a firing alarm's fullscreen UI
 - No `UsageStatsManager` polling in v1 (keep as fallback option if Accessibility gets disabled).
 - Rationale: personal sideload → Play's Accessibility policy doesn't apply; polling's 1s flash-of-gated-app + 24/7 service is worse on every axis that matters here.
 - Sideload setup: App info → ⋮ → **Allow restricted settings** (Android 13+ gate), then enable the service.
+- Input methods are never gated: resolved live from `InputMethodManager.enabledInputMethodList` (no hardcoding — verified Gboard + Unexpected Keyboard on-device).
 
 ## 5. Block UI — opaque fullscreen Activity
 

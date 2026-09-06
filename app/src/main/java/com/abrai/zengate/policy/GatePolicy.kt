@@ -24,4 +24,9 @@ object GatePolicy {
         if (foregroundPackage in extraIgnored) return false
         return foregroundPackage !in survivalPackages
     }
+
+    fun isSessionActive(
+        nowMs: Long,
+        sessionExpiryMs: Long,
+    ): Boolean = nowMs < sessionExpiryMs
 }

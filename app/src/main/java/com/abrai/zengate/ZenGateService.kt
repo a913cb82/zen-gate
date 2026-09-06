@@ -2,19 +2,21 @@ package com.abrai.zengate
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Context
+import android.content.Intent
 import android.os.SystemClock
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.inputmethod.InputMethodManager
-import android.widget.Toast
 import com.abrai.zengate.policy.GatePolicy
 
-/** M1 skeleton: log + toast on gated apps. Real block screen lands in M2. */
+/** M2: gated apps hit the opaque block; session/kill-switch state comes from [GateState]. */
 class ZenGateService : AccessibilityService() {
     private var cachedImes: Set<String> = emptySet()
     private var imeCacheAt: Long = 0
-    private var lastToastPkg: String? = null
-    private var lastToastAt: Long = 0
+
+    override fun onServiceConnected() {
+        Log.d(TAG, "connected; enabledImes=${enabledImes()}")
+    }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
@@ -22,21 +24,23 @@ class ZenGateService : AccessibilityService() {
             val pkg = event.packageName?.toString().orEmpty()
             val gated = GatePolicy.isGated(pkg, packageName, enabledImes())
             Log.d(TAG, "foreground=$pkg gated=$gated")
-            if (!gated) return
-            // Collapse toast bursts from multi-window transitions (M2 adds a real isShowing guard).
+            if (!gated || !GateState.enabled) return
+            if (GatePolicy.isSessionActive(System.currentTimeMillis(), GateState.sessionExpiryMs)) return
             val now = SystemClock.elapsedRealtime()
-            if (pkg == lastToastPkg && now - lastToastAt < TOAST_DEBOUNCE_MS) return
-            lastToastPkg = pkg
-            lastToastAt = now
-            Toast.makeText(this, "ZenGate M1: $pkg gated", Toast.LENGTH_SHORT).show()
+            if (pkg == GateState.ignorePkg && now < GateState.ignoreUntilElapsedMs) return
+            if (BlockActivity.isShowing) return
+            startActivity(
+                Intent(this, BlockActivity::class.java)
+                    .putExtra(BlockActivity.EXTRA_PACKAGE, pkg)
+                    .addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP,
+                    ),
+            )
         } catch (t: Throwable) {
-            // A gate must never die: log and survive (HyperOS intercepts toasts for sideloaded apps).
+            // A gate must never die: log and survive.
             Log.e(TAG, "event handling failed", t)
         }
-    }
-
-    override fun onServiceConnected() {
-        Log.d(TAG, "connected; enabledImes=${enabledImes()}")
     }
 
     override fun onInterrupt() = Unit
@@ -54,7 +58,6 @@ class ZenGateService : AccessibilityService() {
 
     companion object {
         private const val TAG = "ZenGate"
-        private const val TOAST_DEBOUNCE_MS = 2000L
         private const val IME_CACHE_TTL_MS = 60_000L
     }
 }

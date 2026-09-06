@@ -44,4 +44,12 @@ class GatePolicyTest {
     fun `dialer is gated until user whitelist lands in M4`() {
         assertTrue(GatePolicy.isGated("com.google.android.dialer", own))
     }
+
+    @Test
+    fun `session active only before expiry`() {
+        assertTrue(GatePolicy.isSessionActive(1000L, 2000L))
+        assertFalse(GatePolicy.isSessionActive(2000L, 2000L))
+        assertFalse(GatePolicy.isSessionActive(3000L, 2000L))
+        assertFalse(GatePolicy.isSessionActive(1000L, 0L))
+    }
 }

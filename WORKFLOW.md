@@ -31,6 +31,10 @@ phone tapping. Distilled from the screen-time build (2026-09-06).
    hangs; MIUI verification takes 1–4 min even when healthy):
    `nohup adb install -r app.apk > log 2>&1 &` then poll the log file.
    Updates (`-r`) are prompt-free; fresh installs need one on-screen Allow.
+   If an install hangs with no `AdbInstallActivity` in logcat: wake the phone
+   (`input keyevent 224` — dozing stalls verification), and if still stuck,
+   kill the stale client and retry (a wedged session blocks the next one).
+   Bump `versionCode` on every installed build; verify `lastUpdateTime` after.
 3. Verify without touching the phone:
    - `adb logcat -c` then drive transitions (`monkey -p <pkg>`, `am start -n`,
      `input keyevent 3`) and grep the app tag.

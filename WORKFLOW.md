@@ -69,6 +69,11 @@ phone tapping. Distilled from the screen-time build (2026-09-06).
   "successful" builds lie via up-to-date checks.
 - Toasts are not a diagnostic channel: rate-limited, queued for seconds, and
   misleading under bursts. Log everything; gate toasts out of test paths.
+- DataStore: exactly one instance per file — always construct it from
+  `applicationContext`. Separate Activity/Service instances silently lose each
+  other's writes (in-memory caches diverge; last writer clobbers). Pair every
+  store write with a synchronous in-memory mirror update — async flow
+  collectors converge too late for millisecond-later decisions.
 - `adb logcat -c` destroys evidence — dump first, clear deliberately.
 - Exact alarms need a runtime grant state; log `canScheduleExactAlarms()` and
   always code the inexact fallback. Boot receivers can't start FGS directly on

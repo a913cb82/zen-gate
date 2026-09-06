@@ -7,8 +7,6 @@ import java.time.ZoneId
 /** All knobs from PLAN.md §3b with spec defaults. Global, not per-app. */
 data class ZenConfig(
     val unlockPoolSec: Long = 10,
-    val refillAmountSec: Long = 20,
-    val refillIntervalSec: Long = 300,
     val baseWaitSec: Long = 30,
     val waitIncrementSec: Long = 10,
     val sessionAllowSec: Long = 300,
@@ -21,34 +19,15 @@ data class PoolState(
     val poolSec: Long = 10,
     val usagesToday: Int = 0,
     val dayId: String = "",
-    val lastRefillWallMs: Long = 0L,
     val sessionExpiryWallMs: Long = 0L,
-    val sessionPending: Boolean = false,
 )
 
 /**
  * Pure pool/session math. No Android imports — unit-tested headless.
- * Sessions are plain wall-clock deadlines; expiry while whitelisted arms
- * [PoolState.sessionPending] instead of blocking immediately.
+ * Sessions are plain wall-clock deadlines. Session end tops up the grace pool;
+ * the next gated entry drains it before any block.
  */
 object PoolEngine {
-    /** Rolling refill: +amount per elapsed interval, capped at one refill amount. */
-    fun refill(
-        state: PoolState,
-        nowWallMs: Long,
-        cfg: ZenConfig = ZenConfig(),
-    ): PoolState {
-        if (state.lastRefillWallMs == 0L) return state.copy(lastRefillWallMs = nowWallMs)
-        val elapsedSec = (nowWallMs - state.lastRefillWallMs) / 1_000
-        if (elapsedSec < cfg.refillIntervalSec) return state
-        val intervals = elapsedSec / cfg.refillIntervalSec
-        val pool = (state.poolSec + intervals * cfg.refillAmountSec).coerceAtMost(cfg.refillAmountSec)
-        return state.copy(
-            poolSec = pool,
-            lastRefillWallMs = state.lastRefillWallMs + intervals * cfg.refillIntervalSec * 1_000,
-        )
-    }
-
     fun drain(
         state: PoolState,
         seconds: Long,
@@ -73,7 +52,16 @@ object PoolEngine {
         state.copy(
             usagesToday = state.usagesToday + 1,
             sessionExpiryWallMs = nowWallMs + cfg.sessionAllowSec * 1_000,
-            sessionPending = false,
+            poolSec = state.poolSec.coerceAtLeast(cfg.unlockPoolSec),
+        )
+
+    /** Session end: clear the deadline and top up the grace pool. */
+    fun endSession(
+        state: PoolState,
+        cfg: ZenConfig = ZenConfig(),
+    ): PoolState =
+        state.copy(
+            sessionExpiryWallMs = 0L,
             poolSec = state.poolSec.coerceAtLeast(cfg.unlockPoolSec),
         )
 
@@ -99,9 +87,7 @@ object PoolEngine {
             poolSec = cfg.unlockPoolSec,
             usagesToday = 0,
             dayId = todayId,
-            lastRefillWallMs = nowWallMs,
             sessionExpiryWallMs = 0L,
-            sessionPending = false,
         )
 
     fun needsMidnightReset(

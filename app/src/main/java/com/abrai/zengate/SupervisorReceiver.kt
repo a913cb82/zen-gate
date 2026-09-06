@@ -56,13 +56,11 @@ class SupervisorReceiver : BroadcastReceiver() {
             }
             GateAlarms.ACTION_SESSION_END -> {
                 if (PoolEngine.sessionRemainingMs(snap, System.currentTimeMillis(), cfg) > 0) return
-                val cleared = snap.copy(sessionExpiryWallMs = 0L, sessionPending = true)
+                val cleared = PoolEngine.endSession(snap, cfg)
                 GateState.applyPool(cleared)
                 store.savePool(cleared)
-                Log.d(TAG, "session ended; pending block armed")
-                if (isInteractive(context)) {
-                    maybeBlock(context, cleared, cfg, enabled)
-                }
+                Log.d(TAG, "session ended; grace pool=${cleared.poolSec}")
+                GateAlarms.schedulePoolExpiry(context, cleared.poolSec * 1_000)
             }
             GateAlarms.ACTION_MIDNIGHT -> {
                 val now = System.currentTimeMillis()

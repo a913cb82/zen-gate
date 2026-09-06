@@ -10,13 +10,6 @@ class PoolEngineTest {
     private val t0 = 1_000_000_000L
 
     @Test
-    fun `first refill seeds clock without granting`() {
-        val out = PoolEngine.refill(PoolState(poolSec = 5), t0, cfg)
-        assertEquals(5, out.poolSec)
-        assertEquals(t0, out.lastRefillWallMs)
-    }
-
-    @Test
     fun `enter verdict drains when pool remains, blocks when empty`() {
         assertEquals(PoolEngine.EnterVerdict.DRAIN, PoolEngine.enterVerdict(1))
         assertEquals(PoolEngine.EnterVerdict.DRAIN, PoolEngine.enterVerdict(20))
@@ -24,16 +17,14 @@ class PoolEngineTest {
     }
 
     @Test
-    fun `refill caps at refill amount`() {
-        val s = PoolState(poolSec = 18, lastRefillWallMs = t0)
-        assertEquals(20, PoolEngine.refill(s, t0 + 300_000, cfg).poolSec)
-        val low = PoolState(poolSec = 5, lastRefillWallMs = t0)
-        assertEquals(5, PoolEngine.refill(low, t0 + 299_000, cfg).poolSec)
-        val one = PoolEngine.refill(low, t0 + 300_000, cfg)
-        assertEquals(20, one.poolSec)
-        assertEquals(t0 + 300_000, one.lastRefillWallMs)
-        val three = PoolEngine.refill(low, t0 + 900_000, cfg)
-        assertEquals(20, three.poolSec)
+    fun `session end tops up grace pool and clears expiry`() {
+        val s = PoolState(poolSec = 0, usagesToday = 2, sessionExpiryWallMs = t0 + 300_000)
+        val out = PoolEngine.endSession(s, cfg)
+        assertEquals(0, out.sessionExpiryWallMs)
+        assertEquals(10, out.poolSec)
+        assertEquals(2, out.usagesToday)
+        val rich = PoolState(poolSec = 18, sessionExpiryWallMs = t0 + 1)
+        assertEquals(18, PoolEngine.endSession(rich, cfg).poolSec)
     }
 
     @Test
@@ -49,12 +40,11 @@ class PoolEngineTest {
     }
 
     @Test
-    fun `unlock sets wall-clock expiry and clears pending`() {
+    fun `unlock sets wall-clock expiry`() {
         val out = PoolEngine.unlock(PoolState(poolSec = 0, usagesToday = 2), t0, cfg)
         assertEquals(3, out.usagesToday)
         assertEquals(10, out.poolSec)
         assertEquals(t0 + 300_000, out.sessionExpiryWallMs)
-        assertFalse(out.sessionPending)
     }
 
     @Test
@@ -85,7 +75,6 @@ class PoolEngineTest {
         assertEquals(10, out.poolSec)
         assertEquals("2026-09-06", out.dayId)
         assertEquals(0, out.sessionExpiryWallMs)
-        assertFalse(out.sessionPending)
     }
 
     @Test

@@ -278,12 +278,6 @@ private fun knobsScreen(
                 knobField("Free pool on unlock", cfg.unlockPoolSec) {
                     scope.launch { store.setKnob(GateStoreKeys.K_UNLOCK_POOL, it) }
                 }
-                knobField("Refill amount", cfg.refillAmountSec) {
-                    scope.launch { store.setKnob(GateStoreKeys.K_REFILL_AMOUNT, it) }
-                }
-                knobField("Refill interval", cfg.refillIntervalSec) {
-                    scope.launch { store.setKnob(GateStoreKeys.K_REFILL_INTERVAL, it) }
-                }
                 knobField("Base wait", cfg.baseWaitSec) {
                     scope.launch { store.setKnob(GateStoreKeys.K_BASE_WAIT, it) }
                 }

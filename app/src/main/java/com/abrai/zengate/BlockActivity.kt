@@ -77,8 +77,7 @@ class BlockActivity : ComponentActivity() {
                                         com.abrai.zengate.policy.PoolEngine
                                             .midnightReset(today, wall, cfg)
                                     } else {
-                                        com.abrai.zengate.policy.PoolEngine
-                                            .refill(it, wall, cfg)
+                                        it
                                     }
                                 }
                             val unlocked =

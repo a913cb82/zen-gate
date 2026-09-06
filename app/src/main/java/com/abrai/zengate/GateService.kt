@@ -60,13 +60,10 @@ class GateService : Service() {
                 store.whitelist,
             ) { enabled, snap, cfg, list ->
                 GateState.enabled = enabled
-                GateState.sessionExpiryMs = 0L
                 GateState.poolSec = snap.poolSec
                 GateState.usagesToday = snap.usagesToday
                 GateState.dayId = snap.dayId
-                GateState.lastRefillMs = snap.lastRefillMs
                 GateState.sessionExpiryMs = snap.sessionExpiryMs
-                GateState.sessionPending = snap.sessionPending
                 GateState.config = cfg
                 GateState.userWhitelist = list
                 GateState.storeLoaded = true
@@ -126,7 +123,6 @@ class GateService : Service() {
         scope.launch {
             val cfg = GateState.config
             var snap = GateState.poolState()
-            snap = PoolEngine.refill(snap, wall, cfg)
             // Pause pool drain. Sessions are wall-clock: unaffected by screen state.
             if (GateState.lastGatedPkg != null &&
                 GateState.drainEnterElapsedMs != 0L &&
@@ -148,7 +144,7 @@ class GateService : Service() {
         val wall = System.currentTimeMillis()
         scope.launch {
             val cfg = GateState.config
-            val snap = PoolEngine.refill(GateState.poolState(), wall, cfg)
+            val snap = GateState.poolState()
             store.savePool(snap)
             if (!PoolEngine.hasSession(snap) &&
                 GateState.lastGatedPkg != null &&

@@ -76,9 +76,6 @@ class ZenGateService : AccessibilityService() {
             cur = cur.copy(dayId = today)
         } else if (PoolEngine.needsMidnightReset(cur, today)) {
             cur = PoolEngine.midnightReset(today, wall, cfg)
-        } else {
-            val refilled = PoolEngine.refill(cur, wall, cfg)
-            if (refilled != cur) cur = refilled
         }
         if (!GateState.enabled) {
             persist(cur)
@@ -86,20 +83,14 @@ class ZenGateService : AccessibilityService() {
         }
         if (PoolEngine.hasSession(cur)) {
             // Event-driven expiry (alarm is the backstop for the no-events case).
+            // Expiry tops up grace via endSession: the pool drains before any block.
             if (PoolEngine.sessionRemainingMs(cur, wall, cfg) <= 0) {
-                cur = cur.copy(sessionExpiryWallMs = 0L)
+                cur = PoolEngine.endSession(cur, cfg)
             } else {
                 GateState.lastGatedPkg = pkg
                 persist(cur)
                 return
             }
-        }
-        if (cur.sessionPending) {
-            // Session ended while whitelisted: the next gated entry blocks (no pool grace).
-            cur = cur.copy(sessionPending = false)
-            persist(cur)
-            launchBlock(pkg, cur, cfg)
-            return
         }
         if (pkg != GateState.lastGatedPkg) {
             settleDrainLocked(cur, elapsed)

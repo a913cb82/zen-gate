@@ -50,7 +50,6 @@ class BlockActivity : ComponentActivity() {
             MaterialTheme {
                 val scope = rememberCoroutineScope()
                 val waitSec = intent.getIntExtra(EXTRA_WAIT_SEC, WAIT_SEC).coerceAtLeast(1)
-                val sessionMs = intent.getLongExtra(EXTRA_SESSION_MS, SESSION_MS).coerceAtLeast(1_000L)
                 // resetTick is snapshot state: bumping it recomposes with a fresh countdown.
                 // Companion vars alone would not retrigger composition (M2 lesson).
                 val tick by resetTick
@@ -61,8 +60,42 @@ class BlockActivity : ComponentActivity() {
                     resetKey = resetKey,
                     onUnlock = { pkg ->
                         scope.launch {
-                            GateStore(this@BlockActivity)
-                                .setSessionExpiryMs(System.currentTimeMillis() + sessionMs)
+                            val wall = System.currentTimeMillis()
+                            val store = GateStore(this@BlockActivity)
+                            val cfg =
+                                com.abrai.zengate.policy
+                                    .ZenConfig()
+                            val base =
+                                GateState.poolState().let {
+                                    if (com.abrai.zengate.policy.PoolEngine.needsMidnightReset(
+                                            it,
+                                            GateAlarms.todayId(),
+                                        )
+                                    ) {
+                                        com.abrai.zengate.policy.PoolEngine.midnightReset(
+                                            GateAlarms.todayId(),
+                                            wall,
+                                            cfg,
+                                        )
+                                    } else {
+                                        com.abrai.zengate.policy.PoolEngine
+                                            .refill(it, wall, cfg)
+                                    }
+                                }
+                            val unlocked =
+                                com.abrai.zengate.policy.PoolEngine
+                                    .unlock(base, wall, cfg)
+                            store.savePool(unlocked)
+                            GateAlarms.scheduleSessionEnd(
+                                this@BlockActivity,
+                                cfg.sessionAllowSec * 1_000,
+                                hard = false,
+                            )
+                            GateAlarms.scheduleSessionEnd(
+                                this@BlockActivity,
+                                cfg.sessionHardLimitSec * 1_000,
+                                hard = true,
+                            )
                             GateState.ignorePkg = pkg
                             GateState.ignoreUntilElapsedMs = SystemClock.elapsedRealtime() + IGNORE_MS
                             launchBlocked(pkg)
@@ -92,6 +125,22 @@ class BlockActivity : ComponentActivity() {
         super.onDestroy()
     }
 
+    override fun onPause() {
+        super.onPause()
+        // Any exit (home press, screen off, shade tug) invalidates the wait.
+        // onResume restarts it fresh: the countdown only ever runs while shown.
+        wasPaused = true
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (wasPaused) {
+            wasPaused = false
+            Log.d(TAG, "resumed after exit; wait reset pkg=$currentPkg")
+            resetTick.intValue++
+        }
+    }
+
     private fun launchBlocked(pkg: String) {
         val launch =
             packageManager.getLaunchIntentForPackage(pkg)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -111,14 +160,14 @@ class BlockActivity : ComponentActivity() {
 
         // Test hooks: adb can launch the block with short limits without touching product constants.
         const val EXTRA_WAIT_SEC = "wait_sec"
-        const val EXTRA_SESSION_MS = "session_ms"
         const val WAIT_SEC = 30
-        const val SESSION_MS = 300_000L
         private const val IGNORE_MS = 3_000L
 
         @Volatile var isShowing: Boolean = false
 
         @Volatile var currentPkg: String = ""
+
+        @Volatile private var wasPaused: Boolean = false
 
         // Snapshot state (not @Volatile): bumping recomposes the countdown.
         val resetTick = mutableIntStateOf(0)
@@ -154,7 +203,11 @@ private fun blockScreen(
         Text("$remaining", color = Color.White, fontSize = 72.sp)
         Spacer(Modifier.height(32.dp))
         Button(onClick = { onUnlock(blockedPkg) }, enabled = remaining == 0) {
-            Text("Open for 5 minutes")
+            Text(
+                "Open for ${com.abrai.zengate.policy
+                    .ZenConfig()
+                    .sessionAllowSec / 60} minutes",
+            )
         }
     }
 }

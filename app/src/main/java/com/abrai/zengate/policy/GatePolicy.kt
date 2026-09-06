@@ -18,10 +18,12 @@ object GatePolicy {
         foregroundPackage: String,
         ownPackage: String,
         extraIgnored: Set<String> = emptySet(),
+        userWhitelist: Set<String> = emptySet(),
     ): Boolean {
         if (foregroundPackage.isEmpty()) return false
         if (foregroundPackage == ownPackage) return false
         if (foregroundPackage in extraIgnored) return false
+        if (foregroundPackage in userWhitelist) return false
         return foregroundPackage !in survivalPackages
     }
 

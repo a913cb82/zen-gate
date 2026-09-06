@@ -37,11 +37,11 @@ class SupervisorReceiver : BroadcastReceiver() {
         action: String?,
     ) {
         val store = GateStore(context)
-        val cfg = ZenConfig()
         // Store-direct: receivers can run in a fresh process whose mirror never loaded.
         // Reading the file (not the mirror) makes clobbering with defaults impossible.
         val snap = store.snapshot.first().poolState()
         val enabled = store.enabled.first()
+        val cfg = store.config.first()
         when (action) {
             GateAlarms.ACTION_POOL_EXPIRED -> {
                 val cur = snap.copy(poolSec = 0)
@@ -58,11 +58,12 @@ class SupervisorReceiver : BroadcastReceiver() {
                 maybeBlock(context, cleared, cfg, enabled)
             }
             GateAlarms.ACTION_MIDNIGHT -> {
-                val today = GateAlarms.todayId()
-                val reset = PoolEngine.midnightReset(today, System.currentTimeMillis(), cfg)
+                val now = System.currentTimeMillis()
+                val today = PoolEngine.dayIdFor(now, cfg.resetHour, cfg.resetMinute)
+                val reset = PoolEngine.midnightReset(today, now, cfg)
                 GateState.applyPool(reset)
                 store.savePool(reset)
-                GateAlarms.scheduleMidnight(context)
+                GateAlarms.scheduleMidnight(context, cfg.resetHour, cfg.resetMinute, now)
                 Log.d(TAG, "midnight reset done day=$today")
             }
             else -> {

@@ -14,7 +14,6 @@ import android.os.IBinder
 import android.os.SystemClock
 import android.util.Log
 import com.abrai.zengate.policy.PoolEngine
-import com.abrai.zengate.policy.ZenConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -30,6 +29,8 @@ import kotlinx.coroutines.launch
 class GateService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var store: GateStore
+    private var lastResetHour: Int = -1
+    private var lastResetMinute: Int = -1
     private val screenReceiver =
         object : BroadcastReceiver() {
             override fun onReceive(
@@ -52,7 +53,12 @@ class GateService : Service() {
         )
         startForeground(NOTIFICATION_ID, buildNotification(true), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         scope.launch {
-            combine(store.enabled, store.snapshot) { enabled, snap -> enabled to snap }.collect { (enabled, snap) ->
+            combine(
+                store.enabled,
+                store.snapshot,
+                store.config,
+                store.whitelist,
+            ) { enabled, snap, cfg, list ->
                 GateState.enabled = enabled
                 GateState.sessionExpiryMs = 0L
                 GateState.poolSec = snap.poolSec
@@ -61,13 +67,20 @@ class GateService : Service() {
                 GateState.lastRefillMs = snap.lastRefillMs
                 GateState.sessionStartMs = snap.sessionStartMs
                 GateState.sessionScreenOnMs = snap.sessionScreenOnMs
+                GateState.config = cfg
+                GateState.userWhitelist = list
                 GateState.storeLoaded = true
+                if (cfg.resetHour != lastResetHour || cfg.resetMinute != lastResetMinute) {
+                    lastResetHour = cfg.resetHour
+                    lastResetMinute = cfg.resetMinute
+                    GateAlarms.scheduleMidnight(this@GateService, lastResetHour, lastResetMinute)
+                }
                 if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
                     android.content.pm.PackageManager.PERMISSION_GRANTED
                 ) {
                     manager.notify(NOTIFICATION_ID, buildNotification(enabled))
                 }
-            }
+            }.collect { }
         }
         registerReceiver(
             screenReceiver,
@@ -76,7 +89,7 @@ class GateService : Service() {
             },
             RECEIVER_NOT_EXPORTED,
         )
-        GateAlarms.scheduleMidnight(this)
+        GateAlarms.scheduleMidnight(this, GateState.config.resetHour, GateState.config.resetMinute)
         Log.d(TAG, "foreground presence active")
     }
 
@@ -111,7 +124,7 @@ class GateService : Service() {
         val elapsed = SystemClock.elapsedRealtime()
         val wall = System.currentTimeMillis()
         scope.launch {
-            val cfg = ZenConfig()
+            val cfg = GateState.config
             var snap = GateState.poolState()
             snap = PoolEngine.refill(snap, wall, cfg)
             // Pause pool drain.
@@ -144,7 +157,7 @@ class GateService : Service() {
         val elapsed = SystemClock.elapsedRealtime()
         val wall = System.currentTimeMillis()
         scope.launch {
-            val cfg = ZenConfig()
+            val cfg = GateState.config
             val snap = PoolEngine.refill(GateState.poolState(), wall, cfg)
             store.savePool(snap)
             if (PoolEngine.hasSession(snap)) {

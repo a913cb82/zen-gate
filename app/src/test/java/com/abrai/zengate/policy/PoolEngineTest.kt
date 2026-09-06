@@ -82,13 +82,35 @@ class PoolEngineTest {
     }
 
     @Test
-    fun `next midnight is start of tomorrow UTC`() {
+    fun `next reset is next HH MM occurrence UTC`() {
         val zone = java.time.ZoneId.of("UTC")
-        // 2001-09-09T01:46:40Z -> 2001-09-10T00:00:00Z.
+        // 2001-09-09T01:46:40Z, reset 00:00 -> 2001-09-10T00:00:00Z.
         assertEquals(
             1_000_080_000_000L,
             com.abrai.zengate.GateAlarms
-                .nextMidnightMs(1_000_000_000_000L, zone),
+                .nextResetMs(1_000_000_000_000L, 0, 0, zone),
         )
+        // Same instant, reset 06:00 -> today 2001-09-09T06:00:00Z.
+        assertEquals(
+            1_000_015_200_000L,
+            com.abrai.zengate.GateAlarms
+                .nextResetMs(1_000_000_000_000L, 6, 0, zone),
+        )
+    }
+
+    @Test
+    fun `day id shifts at reset time`() {
+        val zone = java.time.ZoneId.of("UTC")
+        // 2001-09-09T01:46:40Z with reset 00:00 -> 09-09; with reset 06:00 -> 09-08.
+        assertEquals("2001-09-09", PoolEngine.dayIdFor(1_000_000_000_000L, 0, 0, zone))
+        assertEquals("2001-09-08", PoolEngine.dayIdFor(1_000_000_000_000L, 6, 0, zone))
+    }
+
+    @Test
+    fun `user whitelist exempts apps`() {
+        val white = setOf("com.example.app")
+        val own = "com.abrai.zengate"
+        assertFalse(GatePolicy.isGated("com.example.app", own, emptySet(), white))
+        assertTrue(GatePolicy.isGated("com.instagram.android", own, emptySet(), white))
     }
 }

@@ -9,7 +9,6 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.inputmethod.InputMethodManager
 import com.abrai.zengate.policy.GatePolicy
 import com.abrai.zengate.policy.PoolEngine
-import com.abrai.zengate.policy.ZenConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -44,7 +43,7 @@ class ZenGateService : AccessibilityService() {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         try {
             val pkg = event.packageName?.toString().orEmpty()
-            val gated = GatePolicy.isGated(pkg, packageName, enabledImes())
+            val gated = GatePolicy.isGated(pkg, packageName, enabledImes(), GateState.userWhitelist)
             Log.d(TAG, "foreground=$pkg gated=$gated")
             if (!gated) {
                 settleDrain()
@@ -61,7 +60,7 @@ class ZenGateService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     private fun onGated(pkg: String) {
-        val cfg = ZenConfig()
+        val cfg = GateState.config
         val wall = System.currentTimeMillis()
         val elapsed = SystemClock.elapsedRealtime()
         if (!GateState.storeLoaded) {
@@ -69,7 +68,7 @@ class ZenGateService : AccessibilityService() {
             return
         }
         var cur = GateState.poolState()
-        val today = GateAlarms.todayId()
+        val today = PoolEngine.dayIdFor(wall, cfg.resetHour, cfg.resetMinute)
         if (cur.dayId.isEmpty()) {
             cur = cur.copy(dayId = today)
         } else if (PoolEngine.needsMidnightReset(cur, today)) {

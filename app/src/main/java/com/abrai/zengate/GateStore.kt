@@ -8,8 +8,10 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.abrai.zengate.policy.PoolState
+import com.abrai.zengate.policy.ZenConfig
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -24,6 +26,18 @@ object GateStoreKeys {
     val LAST_REFILL_MS = longPreferencesKey("last_refill_ms")
     val SESSION_START_MS = longPreferencesKey("session_start_ms")
     val SESSION_SCREEN_ON_MS = longPreferencesKey("session_screen_on_ms")
+    val WHITELIST = stringSetPreferencesKey("whitelist")
+    val SEEDED = booleanPreferencesKey("seeded")
+    val K_SESSION_ALLOW = longPreferencesKey("k_session_allow")
+    val K_UNLOCK_POOL = longPreferencesKey("k_unlock_pool")
+    val K_REFILL_AMOUNT = longPreferencesKey("k_refill_amount")
+    val K_REFILL_INTERVAL = longPreferencesKey("k_refill_interval")
+    val K_POOL_CAP = longPreferencesKey("k_pool_cap")
+    val K_BASE_WAIT = longPreferencesKey("k_base_wait")
+    val K_WAIT_INC = longPreferencesKey("k_wait_inc")
+    val K_HARD_LIMIT = longPreferencesKey("k_hard_limit")
+    val K_RESET_HOUR = intPreferencesKey("k_reset_hour")
+    val K_RESET_MINUTE = intPreferencesKey("k_reset_minute")
 }
 
 /** Full engine snapshot for the in-memory mirror. */
@@ -38,13 +52,14 @@ data class EngineSnapshot(
     fun poolState(): PoolState = PoolState(poolSec, usagesToday, dayId, lastRefillMs, sessionStartMs, sessionScreenOnMs)
 }
 
-/** Persisted gate state. Whitelist + tuning knobs join these keys in M4. */
+/** Persisted gate state: engine + whitelist + knobs (M4). */
 class GateStore(
     context: Context,
 ) {
     // Application context: exactly one DataStore per file. Activity/Service contexts
     // would spawn rival instances that silently lose writes (M3 lesson).
-    private val app: Context = context.applicationContext
+    val appContext: Context = context.applicationContext
+    private val app: Context = appContext
 
     val enabled: Flow<Boolean> =
         app.gateDataStore.data.map { it[GateStoreKeys.ENABLED] ?: true }
@@ -61,6 +76,30 @@ class GateStore(
                 lastRefillMs = it[GateStoreKeys.LAST_REFILL_MS] ?: 0L,
                 sessionStartMs = it[GateStoreKeys.SESSION_START_MS] ?: 0L,
                 sessionScreenOnMs = it[GateStoreKeys.SESSION_SCREEN_ON_MS] ?: 0L,
+            )
+        }
+
+    val whitelist: Flow<Set<String>> =
+        app.gateDataStore.data.map { it[GateStoreKeys.WHITELIST] ?: emptySet() }
+
+    val seeded: Flow<Boolean> =
+        app.gateDataStore.data.map { it[GateStoreKeys.SEEDED] ?: false }
+
+    private val defaults = ZenConfig()
+
+    val config: Flow<ZenConfig> =
+        app.gateDataStore.data.map {
+            ZenConfig(
+                unlockPoolSec = it[GateStoreKeys.K_UNLOCK_POOL] ?: defaults.unlockPoolSec,
+                refillAmountSec = it[GateStoreKeys.K_REFILL_AMOUNT] ?: defaults.refillAmountSec,
+                refillIntervalSec = it[GateStoreKeys.K_REFILL_INTERVAL] ?: defaults.refillIntervalSec,
+                poolCapSec = it[GateStoreKeys.K_POOL_CAP] ?: defaults.poolCapSec,
+                baseWaitSec = it[GateStoreKeys.K_BASE_WAIT] ?: defaults.baseWaitSec,
+                waitIncrementSec = it[GateStoreKeys.K_WAIT_INC] ?: defaults.waitIncrementSec,
+                sessionAllowSec = it[GateStoreKeys.K_SESSION_ALLOW] ?: defaults.sessionAllowSec,
+                sessionHardLimitSec = it[GateStoreKeys.K_HARD_LIMIT] ?: defaults.sessionHardLimitSec,
+                resetHour = it[GateStoreKeys.K_RESET_HOUR] ?: defaults.resetHour,
+                resetMinute = it[GateStoreKeys.K_RESET_MINUTE] ?: defaults.resetMinute,
             )
         }
 
@@ -81,5 +120,38 @@ class GateStore(
             it[GateStoreKeys.SESSION_START_MS] = state.sessionStartWallMs
             it[GateStoreKeys.SESSION_SCREEN_ON_MS] = state.sessionScreenOnMs
         }
+    }
+
+    suspend fun setWhitelisted(
+        pkg: String,
+        listed: Boolean,
+    ) {
+        app.gateDataStore.edit {
+            val cur = it[GateStoreKeys.WHITELIST] ?: emptySet()
+            it[GateStoreKeys.WHITELIST] = if (listed) cur + pkg else cur - pkg
+        }
+    }
+
+    suspend fun seedDefaults(suggested: Set<String>) {
+        app.gateDataStore.edit {
+            if (it[GateStoreKeys.SEEDED] != true) {
+                it[GateStoreKeys.WHITELIST] = (it[GateStoreKeys.WHITELIST] ?: emptySet()) + suggested
+                it[GateStoreKeys.SEEDED] = true
+            }
+        }
+    }
+
+    suspend fun setKnob(
+        key: Preferences.Key<Long>,
+        value: Long,
+    ) {
+        app.gateDataStore.edit { it[key] = value }
+    }
+
+    suspend fun setKnob(
+        key: Preferences.Key<Int>,
+        value: Int,
+    ) {
+        app.gateDataStore.edit { it[key] = value }
     }
 }

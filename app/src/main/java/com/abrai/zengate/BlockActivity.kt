@@ -62,21 +62,20 @@ class BlockActivity : ComponentActivity() {
                         scope.launch {
                             val wall = System.currentTimeMillis()
                             val store = GateStore(this@BlockActivity)
-                            val cfg =
-                                com.abrai.zengate.policy
-                                    .ZenConfig()
+                            val cfg = GateState.config
+                            val today =
+                                com.abrai.zengate.policy.PoolEngine.dayIdFor(
+                                    wall,
+                                    cfg.resetHour,
+                                    cfg.resetMinute,
+                                )
                             val base =
                                 GateState.poolState().let {
-                                    if (com.abrai.zengate.policy.PoolEngine.needsMidnightReset(
-                                            it,
-                                            GateAlarms.todayId(),
-                                        )
+                                    if (com.abrai.zengate.policy.PoolEngine
+                                            .needsMidnightReset(it, today)
                                     ) {
-                                        com.abrai.zengate.policy.PoolEngine.midnightReset(
-                                            GateAlarms.todayId(),
-                                            wall,
-                                            cfg,
-                                        )
+                                        com.abrai.zengate.policy.PoolEngine
+                                            .midnightReset(today, wall, cfg)
                                     } else {
                                         com.abrai.zengate.policy.PoolEngine
                                             .refill(it, wall, cfg)
@@ -207,9 +206,7 @@ private fun blockScreen(
         Spacer(Modifier.height(32.dp))
         Button(onClick = { onUnlock(blockedPkg) }, enabled = remaining == 0) {
             Text(
-                "Open for ${com.abrai.zengate.policy
-                    .ZenConfig()
-                    .sessionAllowSec / 60} minutes",
+                "Open for ${GateState.config.sessionAllowSec / 60} minutes",
             )
         }
     }

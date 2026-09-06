@@ -1,5 +1,9 @@
 package com.abrai.zengate.policy
 
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneId
+
 /** All knobs from PLAN.md §3b with spec defaults. Global, not per-app. */
 data class ZenConfig(
     val unlockPoolSec: Long = 10,
@@ -10,6 +14,8 @@ data class ZenConfig(
     val waitIncrementSec: Long = 10,
     val sessionAllowSec: Long = 300,
     val sessionHardLimitSec: Long = 1_800,
+    val resetHour: Int = 0,
+    val resetMinute: Int = 0,
 )
 
 /** Persisted engine state. Wall clocks in ms, durations in s/ms as named. */
@@ -104,4 +110,19 @@ object PoolEngine {
         state: PoolState,
         todayId: String,
     ): Boolean = state.dayId.isNotEmpty() && state.dayId != todayId
+
+    /** Day id shifted by the configured reset time: before HH:MM counts as yesterday. */
+    fun dayIdFor(
+        nowWallMs: Long,
+        hour: Int,
+        minute: Int,
+        zone: ZoneId = ZoneId.systemDefault(),
+    ): String {
+        val now = LocalDateTime.ofInstant(Instant.ofEpochMilli(nowWallMs), zone)
+        var date = now.toLocalDate()
+        if (now.toLocalTime() < java.time.LocalTime.of(hour, minute)) {
+            date = date.minusDays(1)
+        }
+        return date.toString()
+    }
 }

@@ -7,7 +7,7 @@ import android.content.Intent
 import android.os.SystemClock
 import android.util.Log
 import java.time.Instant
-import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
 
 /**
@@ -26,18 +26,17 @@ object GateAlarms {
     private const val RC_MIDNIGHT = 14
     private const val TAG = "ZenGate"
 
-    fun todayId(zone: ZoneId = ZoneId.systemDefault()): String = LocalDate.now(zone).toString()
-
-    fun nextMidnightMs(
+    fun nextResetMs(
         nowWallMs: Long,
+        hour: Int,
+        minute: Int,
         zone: ZoneId = ZoneId.systemDefault(),
-    ): Long =
-        LocalDate
-            .ofInstant(Instant.ofEpochMilli(nowWallMs), zone)
-            .plusDays(1)
-            .atStartOfDay(zone)
-            .toInstant()
-            .toEpochMilli()
+    ): Long {
+        val now = LocalDateTime.ofInstant(Instant.ofEpochMilli(nowWallMs), zone)
+        val todayReset = now.toLocalDate().atTime(hour, minute)
+        val target = if (todayReset.isAfter(now)) todayReset else todayReset.plusDays(1)
+        return target.atZone(zone).toInstant().toEpochMilli()
+    }
 
     fun schedulePoolExpiry(
         context: Context,
@@ -63,11 +62,13 @@ object GateAlarms {
 
     fun scheduleMidnight(
         context: Context,
+        hour: Int,
+        minute: Int,
         nowWallMs: Long = System.currentTimeMillis(),
     ) {
         val alarmManager = context.getSystemService(AlarmManager::class.java)
         val operation = operation(context, ACTION_MIDNIGHT, RC_MIDNIGHT)
-        val atWall = nextMidnightMs(nowWallMs)
+        val atWall = nextResetMs(nowWallMs, hour, minute)
         if (alarmManager.canScheduleExactAlarms()) {
             alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atWall, operation)
         } else {

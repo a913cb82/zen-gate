@@ -1,6 +1,23 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.dsl.KotlinAndroidProjectExtension
 
+// Traceable installs: versionCode tracks commit count, so dumpsys always tells what's live.
+val gitCount =
+    providers
+        .exec {
+            commandLine("git", "rev-list", "--count", "HEAD")
+        }.standardOutput.asText
+        .get()
+        .trim()
+        .toInt()
+val gitHash =
+    providers
+        .exec {
+            commandLine("git", "rev-parse", "--short", "HEAD")
+        }.standardOutput.asText
+        .get()
+        .trim()
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -15,8 +32,8 @@ android {
         applicationId = "com.abrai.zengate"
         minSdk = 34
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.1.1-m1"
+        versionCode = gitCount
+        versionName = "0.3.0-m3+$gitHash"
     }
 
     buildTypes {

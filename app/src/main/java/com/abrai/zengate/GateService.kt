@@ -121,6 +121,7 @@ class GateService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun onScreenOff() {
+        Log.d(TAG, "screen off")
         if (!GateState.storeLoaded) return
         val elapsed = SystemClock.elapsedRealtime()
         val wall = System.currentTimeMillis()
@@ -156,6 +157,7 @@ class GateService : Service() {
     }
 
     private fun onScreenOn() {
+        Log.d(TAG, "screen on")
         if (!GateState.storeLoaded) return
         val elapsed = SystemClock.elapsedRealtime()
         val wall = System.currentTimeMillis()

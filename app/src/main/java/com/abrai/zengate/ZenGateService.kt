@@ -41,8 +41,9 @@ class ZenGateService : AccessibilityService() {
                 context: Context,
                 intent: Intent,
             ) {
+                Log.d(TAG, "deadline ping received action=${intent.action}")
                 when (intent.action) {
-                    GateAlarms.ACTION_POOL_EXPIRED, GateAlarms.ACTION_SESSION_END -> onDeadline()
+                    GateAlarms.ACTION_DEADLINE_PING -> onDeadline()
                 }
             }
         }
@@ -254,6 +255,7 @@ class ZenGateService : AccessibilityService() {
     private fun persist(state: com.abrai.zengate.policy.PoolState) {
         // Mirror converges via GateService collector; persist for durability.
         GateState.applyPool(state)
+        Log.d(TAG, "persist pool=${state.poolSec} usages=${state.usagesToday} expiry=${state.sessionExpiryWallMs}")
         scope.launch { store.savePool(state) }
     }
 

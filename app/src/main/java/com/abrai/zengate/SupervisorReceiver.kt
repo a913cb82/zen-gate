@@ -52,20 +52,23 @@ class SupervisorReceiver : BroadcastReceiver() {
                 }
             }
             GateAlarms.ACTION_POOL_EXPIRED -> {
-                // Persistence only: the launch decision lives in ZenGateService,
-                // which decides on the live active window (never sticky state).
+                // Persist here; the launch decision lives in ZenGateService
+                // (live active window). Forward package-scoped implicit: alarm
+                // PendingIntents are explicit, which dynamic receivers never get.
                 val cur = snap.copy(poolSec = 0)
                 GateState.applyPool(cur)
                 store.savePool(cur)
                 GateState.drainEnterElapsedMs = 0L
-                Log.d(TAG, "pool expired; decision delegated to gate service")
+                Log.d(TAG, "pool expired; pinging gate service")
+                ping(context, GateAlarms.ACTION_POOL_EXPIRED)
             }
             GateAlarms.ACTION_SESSION_END -> {
                 if (PoolEngine.sessionRemainingMs(snap, System.currentTimeMillis(), cfg) > 0) return
                 val cleared = PoolEngine.endSession(snap)
                 GateState.applyPool(cleared)
                 store.savePool(cleared)
-                Log.d(TAG, "session ended; decision delegated to gate service")
+                Log.d(TAG, "session ended; pinging gate service")
+                ping(context, GateAlarms.ACTION_SESSION_END)
             }
             GateAlarms.ACTION_MIDNIGHT -> {
                 val now = System.currentTimeMillis()
@@ -76,11 +79,30 @@ class SupervisorReceiver : BroadcastReceiver() {
                 GateAlarms.scheduleMidnight(context, cfg.resetHour, cfg.resetMinute, now)
                 Log.d(TAG, "midnight reset done day=$today")
             }
+            GateAlarms.ACTION_DEADLINE_PING -> {
+                // Never for us (no filter): the gate service owns this action.
+                Log.d(TAG, "deadline ping reached manifest receiver; ignoring")
+            }
             else -> {
                 // Boot chain (no action): re-establish foreground presence.
                 context.startForegroundService(Intent(context, GateService::class.java))
                 Log.d(TAG, "gate service (re)started from alarm")
             }
+        }
+    }
+
+    private fun ping(
+        context: Context,
+        deadline: String,
+    ) {
+        try {
+            context.sendBroadcast(
+                Intent(GateAlarms.ACTION_DEADLINE_PING)
+                    .setPackage(context.packageName)
+                    .putExtra(GateAlarms.EXTRA_DEADLINE, deadline),
+            )
+        } catch (t: Throwable) {
+            Log.e(TAG, "deadline ping failed", t)
         }
     }
 

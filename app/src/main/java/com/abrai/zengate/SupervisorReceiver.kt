@@ -96,28 +96,6 @@ class SupervisorReceiver : BroadcastReceiver() {
         return power.isInteractive
     }
 
-    /** True when pkg's process is foreground/visible now (no permission needed). */
-    private fun isForegroundNow(
-        context: Context,
-        pkg: String,
-    ): Boolean {
-        if (pkg.isEmpty()) return false
-        return try {
-            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
-            val hit =
-                am.runningAppProcesses?.any {
-                    it.pkgList?.contains(pkg) == true &&
-                        it.importance <=
-                        android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE
-                } == true
-            Log.d(TAG, "fgCheck pkg=$pkg foreground=$hit")
-            hit
-        } catch (t: Throwable) {
-            Log.d(TAG, "fgCheck failed for $pkg; treating as stale")
-            false
-        }
-    }
-
     private fun maybeBlock(
         context: Context,
         state: com.abrai.zengate.policy.PoolState,
@@ -125,10 +103,11 @@ class SupervisorReceiver : BroadcastReceiver() {
         enabled: Boolean,
     ) {
         // Launch only when the sticky last foreground is itself a gated surface:
-        // firing over a whitelisted app would break the whitelist promise, and the
-        // next gated entry blocks via the event path anyway (pool is already 0).
-        // IMEs never emit window-state events (verified in logs), so the policy
-        // check here passes an empty IME set.
+        // firing over a whitelisted app would break the whitelist promise, and its
+        // exit always emits window events, so the entry path blocks then (pool=0).
+        // (Process-importance checks were tried and lie on HyperOS; the sticky
+        // value is kept clean of transient system surfaces instead. IMEs never
+        // emit window-state events, so this passes an empty IME set.)
         val pkg = GateState.lastForegroundPkg ?: return
         if (!enabled) return
         if (PoolEngine.hasSession(state) &&
@@ -141,11 +120,8 @@ class SupervisorReceiver : BroadcastReceiver() {
                 context.packageName,
                 emptySet(),
                 GateState.userWhitelist,
-            ) &&
-            isForegroundNow(context, pkg)
+            )
         ) {
-            // Genuinely inside a whitelisted app right now: stay quiet. Its exit
-            // always emits window events, and the entry path blocks then (pool=0).
             Log.d(TAG, "deadline inside whitelisted $pkg; entry path will block")
             return
         }

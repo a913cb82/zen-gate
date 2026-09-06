@@ -12,6 +12,9 @@ object GatePolicy {
             "com.android.emergency",
             "com.android.systemui",
             "com.google.android.deskclock",
+            // Unlock-handoff overlay on this device: transient (fires at unlock,
+            // never again), so it must never anchor alarm-time launches.
+            "eu.toneiv.ubktouch",
         )
 
     fun isGated(

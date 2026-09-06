@@ -46,8 +46,11 @@ class ZenGateService : AccessibilityService() {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         try {
             val pkg = event.packageName?.toString().orEmpty()
-            GateState.lastForegroundPkg = pkg.ifEmpty { null }
-            GateState.lastForegroundElapsedMs = SystemClock.elapsedRealtime()
+            // Survival surfaces (unlock handoffs, shade) are transient: they must
+            // not anchor alarm-time launches, so they leave the sticky value alone.
+            if (pkg !in GatePolicy.survivalPackages) {
+                GateState.lastForegroundPkg = pkg.ifEmpty { null }
+            }
             val gated = GatePolicy.isGated(pkg, packageName, imePackages(), GateState.userWhitelist)
             Log.d(TAG, "foreground=$pkg gated=$gated")
             if (!gated) {

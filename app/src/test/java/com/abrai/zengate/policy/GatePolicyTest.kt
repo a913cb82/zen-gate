@@ -22,6 +22,12 @@ class GatePolicyTest {
     }
 
     @Test
+    fun `unlock handoff overlay stays survival (transient, never an alarm anchor)`() {
+        assertTrue(GatePolicy.survivalPackages.contains("eu.toneiv.ubktouch"))
+        assertFalse(GatePolicy.isGated("eu.toneiv.ubktouch", own))
+    }
+
+    @Test
     fun `own package is never gated`() {
         assertFalse(GatePolicy.isGated(own, own))
     }

@@ -1,0 +1,17 @@
+# Gradle / Android
+.gradle/
+build/
+local.properties
+*.ap_
+*.aab
+*.apk
+!gradle/wrapper/gradle-wrapper.jar
+# IDE
+.idea/
+*.iml
+.DS_Store
+# Python scratch
+__pycache__/
+.venv/
+# pre-commit cache
+.pre-commit-cache/

@@ -98,11 +98,14 @@ Core rule: the app never runs a ticking loop in any state. Every countdown is a 
 
 ## 9. Build order
 
-1. **M1 — Gate skeleton:** AccessibilityService logging foreground packages + hardcoded whitelist; toast instead of block. Prove instant detection on the 15 Ultra.
-2. **M2 — Block screen:** opaque Activity with fixed 30s countdown + Open → 5-min session. Launcher/settings covered.
-3. **M3 — Pool engine:** 10s pool, refill/cap, escalating penalty, midnight reset, persisted state.
-4. **M4 — Whitelist UI:** app picker + toggles + tuning knobs in DataStore.
-5. **M5 — Xiaomi hardening:** onboarding checklist (restricted-settings, autostart, battery), boot receiver, break-glass doc.
+1. **M1 — Gate skeleton:** AccessibilityService logging foreground packages + hardcoded whitelist; toast instead of block. Prove instant detection on the 15 Ultra. ✅ done (with known issue below).
+2. **M5-core — hardening first (promoted):** supervisor that cross-checks the feed via UsageStats and self-heals by re-registering our service (needs adb-granted WRITE_SECURE_SETTINGS + GET_USAGE_STATS via appops — no user taps); boot receiver; `scripts/verify-feed.sh` (30s adb subscription check after every install); one-time Xiaomi toggles done manually now (autostart, battery unrestricted, pin in Recents). Reason: every later milestone installs builds, and each install risks the silent-subscription issue — this removes the manual re-toggle loop from M2–M4 development.
+3. **M2 — Block screen:** opaque Activity with fixed 30s countdown + Open → 5-min session. Launcher/settings covered.
+4. **M3 — Pool engine:** 10s pool, refill/cap, escalating penalty, midnight reset, persisted state.
+5. **M4 — Whitelist UI:** app picker + toggles + tuning knobs in DataStore.
+6. **M5-ui — onboarding screens:** in-app checklist UI (restricted settings, accessibility, autostart, battery) + break-glass doc. The headless hardening already landed in M5-core.
+
+Known issue (found 2026-09-06, HyperOS 3): the accessibility event subscription sometimes goes silent after install/update churn (bound + healthy process, zero callbacks despite verified transitions). Recovery path unconfirmed; suspects are stale system connection records (seen 3 live + 3 DEAD). Operational rules until resolved: batch changes into few installs, verify subscription after every install (30s adb transition check), never force-stop (drops the binding), re-toggle service if silent. M5 adds a supervisor: UsageStats polling cross-checks the feed and re-registers our own service via adb-granted WRITE_SECURE_SETTINGS if stalled.
 
 ## 10. Open questions
 

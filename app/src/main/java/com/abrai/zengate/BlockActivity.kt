@@ -117,6 +117,9 @@ class BlockActivity : ComponentActivity() {
 
     override fun onDestroy() {
         isShowing = false
+        // Fresh instances must take the new intent's package (singleInstance
+        // reuse otherwise resurrects a stale anchor: unlock opened the wrong app).
+        currentPkg = ""
         super.onDestroy()
     }
 

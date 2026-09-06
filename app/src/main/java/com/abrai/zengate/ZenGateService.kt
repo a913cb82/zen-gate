@@ -29,6 +29,11 @@ class ZenGateService : AccessibilityService() {
     private var cachedLaunchers: Set<String> = emptySet()
     private var launcherCacheAt: Long = 0
 
+    override fun onUnbind(intent: Intent?): Boolean {
+        instance = null
+        return super.onUnbind(intent)
+    }
+
     override fun onServiceConnected() {
         store = GateStore(this)
         instance = this

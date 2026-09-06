@@ -220,7 +220,7 @@ class GateService : Service() {
             is com.abrai.zengate.policy.GateStatus.Status.Whitelisted -> appLabel(s.pkg) + " — unlimited"
             is com.abrai.zengate.policy.GateStatus.Status.FreeTime -> "Free time — ${s.poolSec}s left"
             is com.abrai.zengate.policy.GateStatus.Status.Blocking ->
-                "Blocking — wait grows per unlock (${s.usagesToday} today)"
+                "Blocking - ${s.usagesToday} unlocks today"
         }
     }
 

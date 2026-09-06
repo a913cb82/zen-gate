@@ -53,8 +53,13 @@ class ZenGateService : AccessibilityService() {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         try {
             val pkg = event.packageName?.toString().orEmpty()
-            GateState.lastEventPkg.value = pkg.ifEmpty { null }
             val gated = GatePolicy.isGated(pkg, packageName, imePackages(), GateState.userWhitelist)
+            // Only real surfaces anchor the status line: transient system
+            // overlays (shade, unlock handoff, keyboards, our own UI) would
+            // make it flap on every swipe.
+            if (gated || pkg in GateState.userWhitelist) {
+                GateState.lastEventPkg.value = pkg
+            }
             Log.d(TAG, "foreground=$pkg gated=$gated")
             if (!gated) {
                 settleDrain(keepDraining = true)

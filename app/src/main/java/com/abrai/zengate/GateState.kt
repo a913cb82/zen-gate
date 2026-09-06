@@ -34,6 +34,16 @@ object GateState {
             sessionScreenOnMs = sessionScreenOnMs,
         )
 
+    /** Write-through: every store write pairs with this so readers never see stale state. */
+    fun applyPool(state: com.abrai.zengate.policy.PoolState) {
+        poolSec = state.poolSec
+        usagesToday = state.usagesToday
+        dayId = state.dayId
+        lastRefillMs = state.lastRefillWallMs
+        sessionStartMs = state.sessionStartWallMs
+        sessionScreenOnMs = state.sessionScreenOnMs
+    }
+
     @Volatile var dayId: String = ""
 
     @Volatile var lastRefillMs: Long = 0L

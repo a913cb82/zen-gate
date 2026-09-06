@@ -86,6 +86,8 @@ class BlockActivity : ComponentActivity() {
                                 com.abrai.zengate.policy.PoolEngine
                                     .unlock(base, wall, cfg)
                             store.savePool(unlocked)
+                            GateState.applyPool(unlocked)
+                            GateState.sessionSegmentStartElapsedMs = SystemClock.elapsedRealtime()
                             Log.d(TAG, "unlock pkg=$pkg usages=${unlocked.usagesToday} pool=${unlocked.poolSec}")
                             GateAlarms.scheduleSessionEnd(
                                 this@BlockActivity,

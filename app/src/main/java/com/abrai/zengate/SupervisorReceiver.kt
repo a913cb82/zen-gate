@@ -40,6 +40,7 @@ class SupervisorReceiver : BroadcastReceiver() {
         when (action) {
             GateAlarms.ACTION_POOL_EXPIRED -> {
                 val cur = GateState.poolState().copy(poolSec = 0)
+                GateState.applyPool(cur)
                 store.savePool(cur)
                 GateState.drainEnterElapsedMs = 0L
                 maybeBlock(context, cur, cfg)
@@ -47,12 +48,16 @@ class SupervisorReceiver : BroadcastReceiver() {
             GateAlarms.ACTION_SESSION_END -> {
                 val cur = GateState.poolState()
                 if (PoolEngine.sessionRemainingMs(cur, System.currentTimeMillis(), cfg) > 0) return
-                store.savePool(cur.copy(sessionStartWallMs = 0L, sessionScreenOnMs = 0L))
-                maybeBlock(context, cur, cfg)
+                val cleared = cur.copy(sessionStartWallMs = 0L, sessionScreenOnMs = 0L)
+                GateState.applyPool(cleared)
+                store.savePool(cleared)
+                maybeBlock(context, cleared, cfg)
             }
             GateAlarms.ACTION_MIDNIGHT -> {
                 val today = GateAlarms.todayId()
-                store.savePool(PoolEngine.midnightReset(today, System.currentTimeMillis(), cfg))
+                val reset = PoolEngine.midnightReset(today, System.currentTimeMillis(), cfg)
+                GateState.applyPool(reset)
+                store.savePool(reset)
                 GateAlarms.scheduleMidnight(context)
                 Log.d(TAG, "midnight reset done day=$today")
             }

@@ -48,6 +48,8 @@ class SupervisorReceiver : BroadcastReceiver() {
                 if (cur != snap) {
                     GateState.applyPool(cur)
                     store.savePool(cur)
+                    GateState.drainEnterElapsedMs = android.os.SystemClock.elapsedRealtime()
+                    GateAlarms.schedulePoolExpiry(context, cur.poolSec * 1_000)
                     Log.d(TAG, "phone unlock; grace pool=${cur.poolSec}")
                 }
             }

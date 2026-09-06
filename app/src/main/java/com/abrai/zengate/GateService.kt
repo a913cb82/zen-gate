@@ -157,6 +157,10 @@ class GateService : Service() {
             if (cur != snap) {
                 GateState.applyPool(cur)
                 store.savePool(cur)
+                // Open the drain segment now: the unlock reveal often emits no
+                // window event, and without this the grace clock never starts.
+                GateState.drainEnterElapsedMs = SystemClock.elapsedRealtime()
+                GateAlarms.schedulePoolExpiry(this@GateService, cur.poolSec * 1_000)
                 Log.d(TAG, "phone unlock; grace pool=${cur.poolSec}")
             }
         }

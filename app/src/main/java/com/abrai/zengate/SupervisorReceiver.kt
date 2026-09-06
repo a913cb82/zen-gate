@@ -59,16 +59,16 @@ class SupervisorReceiver : BroadcastReceiver() {
                 GateState.applyPool(cur)
                 store.savePool(cur)
                 GateState.drainEnterElapsedMs = 0L
-                Log.d(TAG, "pool expired; pinging gate service")
-                ping(context, GateAlarms.ACTION_POOL_EXPIRED)
+                Log.d(TAG, "pool expired; forwarding to gate service")
+                forward(context, GateAlarms.ACTION_POOL_EXPIRED)
             }
             GateAlarms.ACTION_SESSION_END -> {
                 if (PoolEngine.sessionRemainingMs(snap, System.currentTimeMillis(), cfg) > 0) return
                 val cleared = PoolEngine.endSession(snap)
                 GateState.applyPool(cleared)
                 store.savePool(cleared)
-                Log.d(TAG, "session ended; pinging gate service")
-                ping(context, GateAlarms.ACTION_SESSION_END)
+                Log.d(TAG, "session ended; forwarding to gate service")
+                forward(context, GateAlarms.ACTION_SESSION_END)
             }
             GateAlarms.ACTION_MIDNIGHT -> {
                 val now = System.currentTimeMillis()
@@ -79,10 +79,6 @@ class SupervisorReceiver : BroadcastReceiver() {
                 GateAlarms.scheduleMidnight(context, cfg.resetHour, cfg.resetMinute, now)
                 Log.d(TAG, "midnight reset done day=$today")
             }
-            GateAlarms.ACTION_DEADLINE_PING -> {
-                // Never for us (no filter): the gate service owns this action.
-                Log.d(TAG, "deadline ping reached manifest receiver; ignoring")
-            }
             else -> {
                 // Boot chain (no action): re-establish foreground presence.
                 context.startForegroundService(Intent(context, GateService::class.java))
@@ -91,18 +87,25 @@ class SupervisorReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun ping(
+    /**
+     * Intra-app forward on the proven receiver->FGS path (same mechanism as
+     * the boot chain). The gate service decides on the live a11y root via the
+     * shared-process static — no broadcasts for the decision itself, because
+     * alarm PendingIntents are explicit (dynamic receivers never match those)
+     * and HyperOS eats same-app implicit broadcasts from background contexts.
+     */
+    private fun forward(
         context: Context,
         deadline: String,
     ) {
         try {
-            context.sendBroadcast(
-                Intent(GateAlarms.ACTION_DEADLINE_PING)
-                    .setPackage(context.packageName)
-                    .putExtra(GateAlarms.EXTRA_DEADLINE, deadline),
+            context.startForegroundService(
+                Intent(context, GateService::class.java)
+                    .setAction(GateService.ACTION_DEADLINE)
+                    .putExtra(GateService.EXTRA_DEADLINE, deadline),
             )
         } catch (t: Throwable) {
-            Log.e(TAG, "deadline ping failed", t)
+            Log.e(TAG, "deadline forward failed", t)
         }
     }
 

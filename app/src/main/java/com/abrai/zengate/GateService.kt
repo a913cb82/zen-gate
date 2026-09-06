@@ -1,5 +1,6 @@
 package com.abrai.zengate
 
+import android.app.KeyguardManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -11,6 +12,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.os.IBinder
+import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
 import com.abrai.zengate.policy.PoolEngine
@@ -19,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -104,6 +107,9 @@ class GateService : Service() {
                 store.setEnabled(!GateState.enabled)
                 Log.d(TAG, "kill switch toggled")
             }
+        }
+        if (intent?.action == ACTION_DEADLINE) {
+            onDeadline(intent.getStringExtra(EXTRA_DEADLINE).orEmpty())
         }
         return START_STICKY
     }
@@ -199,10 +205,60 @@ class GateService : Service() {
             ).build()
     }
 
+    /**
+     * Alarm-time launch path (single process): the manifest receiver persisted
+     * first, so a store-direct read is fresh by construction (no ordering race).
+     * The verdict runs against the live a11y root via the shared static.
+     */
+    private fun onDeadline(deadline: String) {
+        scope.launch {
+            try {
+                val snap = store.snapshot.first().poolState()
+                val cfg = store.config.first()
+                val enabled = store.enabled.first()
+                val list = store.whitelist.first()
+                val wall = System.currentTimeMillis()
+                val power = getSystemService(PowerManager::class.java)
+                val keys = getSystemService(KeyguardManager::class.java)
+                val remaining = PoolEngine.sessionRemainingMs(snap, wall, cfg)
+                when (
+                    val v =
+                        ZenGateService.decideDeadline(
+                            enabled,
+                            remaining,
+                            packageName,
+                            list,
+                            keys.isKeyguardLocked,
+                            power.isInteractive,
+                        )
+                ) {
+                    is com.abrai.zengate.policy.DeadlineVerdict.Outcome.Launch -> {
+                        Log.d(TAG, "deadline launch pkg=${v.pkg} via $deadline")
+                        startActivity(
+                            Intent(this@GateService, BlockActivity::class.java)
+                                .putExtra(BlockActivity.EXTRA_PACKAGE, v.pkg)
+                                .putExtra(BlockActivity.EXTRA_WAIT_SEC, PoolEngine.penaltySec(snap, cfg).toInt())
+                                .addFlags(
+                                    Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                                        Intent.FLAG_ACTIVITY_SINGLE_TOP,
+                                ),
+                        )
+                    }
+                    com.abrai.zengate.policy.DeadlineVerdict.Outcome.Skip ->
+                        Log.d(TAG, "deadline skipped via $deadline")
+                }
+            } catch (t: Throwable) {
+                Log.e(TAG, "deadline handling failed", t)
+            }
+        }
+    }
+
     companion object {
         private const val TAG = "ZenGate"
         private const val CHANNEL_ID = "gate"
         private const val NOTIFICATION_ID = 1
         const val ACTION_TOGGLE = "com.abrai.zengate.TOGGLE"
+        const val ACTION_DEADLINE = "com.abrai.zengate.DEADLINE"
+        const val EXTRA_DEADLINE = "deadline"
     }
 }

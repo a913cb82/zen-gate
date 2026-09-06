@@ -20,12 +20,6 @@ object GateAlarms {
     const val ACTION_SESSION_END = "com.abrai.zengate.SESSION_END"
     const val ACTION_MIDNIGHT = "com.abrai.zengate.MIDNIGHT"
 
-    /** Intra-app forward: manifest receiver -> gate service (implicit + setPackage). */
-    const val ACTION_DEADLINE_PING = "com.abrai.zengate.DEADLINE_PING"
-
-    /** Which deadline fired (extra on the ping). */
-    const val EXTRA_DEADLINE = "deadline"
-
     private const val RC_POOL = 11
     private const val RC_SESSION = 12
     private const val RC_MIDNIGHT = 14

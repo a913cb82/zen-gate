@@ -25,6 +25,9 @@ object GateState {
 
     @Volatile var lastGatedPkg: String? = null
 
+    /** Last window event package (any surface); drives the notification line. */
+    val lastEventPkg = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
     @Volatile var drainEnterElapsedMs: Long = 0L
 
     @Volatile var ignorePkg: String? = null

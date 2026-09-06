@@ -62,7 +62,8 @@ class GateService : Service() {
                 store.snapshot,
                 store.config,
                 store.whitelist,
-            ) { enabled, snap, cfg, list ->
+                GateState.lastEventPkg,
+            ) { enabled, snap, cfg, list, fg ->
                 GateState.enabled = enabled
                 GateState.poolSec = snap.poolSec
                 GateState.usagesToday = snap.usagesToday
@@ -79,7 +80,11 @@ class GateService : Service() {
                 if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
                     android.content.pm.PackageManager.PERMISSION_GRANTED
                 ) {
-                    manager.notify(NOTIFICATION_ID, buildNotification(enabled))
+                    val line = statusLine(enabled, snap.poolState(), cfg, list, fg)
+                    if (line != lastStatusLine) {
+                        lastStatusLine = line
+                        manager.notify(NOTIFICATION_ID, buildNotification(enabled))
+                    }
                 }
             }.collect { }
         }
@@ -186,6 +191,58 @@ class GateService : Service() {
         }
     }
 
+    private var lastStatusLine: String? = null
+
+    private fun statusLine(
+        enabled: Boolean,
+        snap: com.abrai.zengate.policy.PoolState,
+        cfg: com.abrai.zengate.policy.ZenConfig,
+        list: Set<String>,
+        fg: String?,
+    ): String {
+        val remaining =
+            com.abrai.zengate.policy.PoolEngine
+                .sessionRemainingMs(snap, System.currentTimeMillis(), cfg)
+        return when (
+            val s =
+                com.abrai.zengate.policy.GateStatus.describe(
+                    enabled,
+                    remaining,
+                    snap.sessionExpiryWallMs,
+                    snap.poolSec,
+                    snap.usagesToday,
+                    fg,
+                    list,
+                )
+        ) {
+            com.abrai.zengate.policy.GateStatus.Status.Paused -> "Paused — tap Enable gate to resume"
+            is com.abrai.zengate.policy.GateStatus.Status.Session -> "Session free until " + endLabel(s.expiryWallMs)
+            is com.abrai.zengate.policy.GateStatus.Status.Whitelisted -> appLabel(s.pkg) + " — unlimited"
+            is com.abrai.zengate.policy.GateStatus.Status.FreeTime -> "Free time — ${s.poolSec}s left"
+            is com.abrai.zengate.policy.GateStatus.Status.Blocking ->
+                "Blocking — wait grows per unlock (${s.usagesToday} today)"
+        }
+    }
+
+    private fun endLabel(wallMs: Long): String =
+        try {
+            java.time.LocalTime
+                .ofInstant(
+                    java.time.Instant.ofEpochMilli(wallMs),
+                    java.time.ZoneId.systemDefault(),
+                ).toString()
+                .substring(0, 5)
+        } catch (t: Throwable) {
+            ""
+        }
+
+    private fun appLabel(pkg: String): String =
+        try {
+            packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
+        } catch (t: Throwable) {
+            pkg
+        }
+
     private fun buildNotification(enabled: Boolean): Notification {
         val toggle =
             PendingIntent.getService(
@@ -197,7 +254,16 @@ class GateService : Service() {
         return Notification
             .Builder(this, CHANNEL_ID)
             .setContentTitle(if (enabled) "Zen Gate is watching" else "Zen Gate paused")
-            .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
+            .setContentText(
+                lastStatusLine
+                    ?: statusLine(
+                        enabled,
+                        GateState.poolState(),
+                        GateState.config,
+                        GateState.userWhitelist,
+                        GateState.lastEventPkg.value,
+                    ),
+            ).setSmallIcon(android.R.drawable.ic_lock_idle_lock)
             .setOngoing(true)
             .addAction(
                 Notification.Action

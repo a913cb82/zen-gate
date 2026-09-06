@@ -3,6 +3,7 @@ package com.abrai.zengate
 import android.content.Intent
 import android.os.Bundle
 import android.os.SystemClock
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -42,6 +43,7 @@ class BlockActivity : ComponentActivity() {
         if (currentPkg.isEmpty()) {
             currentPkg = intent.getStringExtra(EXTRA_PACKAGE).orEmpty()
         }
+        Log.d(TAG, "block created pkg=$currentPkg")
         // Swallow Back: the wait is the only way through (kill switch lives in the shade).
         onBackPressedDispatcher.addCallback(this, AlwaysEnabledCallback())
         setContent {
@@ -49,8 +51,10 @@ class BlockActivity : ComponentActivity() {
                 val scope = rememberCoroutineScope()
                 val waitSec = intent.getIntExtra(EXTRA_WAIT_SEC, WAIT_SEC).coerceAtLeast(1)
                 val sessionMs = intent.getLongExtra(EXTRA_SESSION_MS, SESSION_MS).coerceAtLeast(1_000L)
-                // resetKey restarts the countdown only when a different package re-gates us.
-                val resetKey = currentPkg + "/" + resetCounter
+                // resetTick is snapshot state: bumping it recomposes with a fresh countdown.
+                // Companion vars alone would not retrigger composition (M2 lesson).
+                val tick by resetTick
+                val resetKey = currentPkg + "/" + tick
                 blockScreen(
                     blockedPkg = currentPkg.ifEmpty { intent.getStringExtra(EXTRA_PACKAGE).orEmpty() },
                     waitSec = waitSec,
@@ -76,8 +80,9 @@ class BlockActivity : ComponentActivity() {
         // Different package (launch races): re-gate for the new package.
         val pkg = intent.getStringExtra(EXTRA_PACKAGE).orEmpty()
         if (pkg.isNotEmpty() && pkg != currentPkg) {
+            Log.d(TAG, "re-gate old=$currentPkg new=$pkg")
             currentPkg = pkg
-            resetCounter++
+            resetTick.intValue++
         }
         setIntent(intent)
     }
@@ -115,7 +120,10 @@ class BlockActivity : ComponentActivity() {
 
         @Volatile var currentPkg: String = ""
 
-        @Volatile var resetCounter: Int = 0
+        // Snapshot state (not @Volatile): bumping recomposes the countdown.
+        val resetTick = mutableIntStateOf(0)
+
+        private const val TAG = "ZenGate"
     }
 }
 
@@ -132,6 +140,7 @@ private fun blockScreen(
             delay(1_000)
             remaining--
         }
+        Log.d("ZenGate", "wait complete pkg=$blockedPkg")
     }
     Column(
         modifier = Modifier.fillMaxSize().background(Color.Black),

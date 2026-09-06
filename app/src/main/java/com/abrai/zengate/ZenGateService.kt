@@ -1,18 +1,24 @@
 package com.abrai.zengate
 
 import android.accessibilityservice.AccessibilityService
+import android.app.KeyguardManager
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.inputmethod.InputMethodManager
+import com.abrai.zengate.policy.DeadlineVerdict
 import com.abrai.zengate.policy.GatePolicy
 import com.abrai.zengate.policy.PoolEngine
 import com.abrai.zengate.policy.ZenConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -28,8 +34,32 @@ class ZenGateService : AccessibilityService() {
     private var cachedLaunchers: Set<String> = emptySet()
     private var launcherCacheAt: Long = 0
 
+    /** Alarm-time launches decide on the LIVE active window (never sticky state). */
+    private val deadlineReceiver =
+        object : BroadcastReceiver() {
+            override fun onReceive(
+                context: Context,
+                intent: Intent,
+            ) {
+                when (intent.action) {
+                    GateAlarms.ACTION_POOL_EXPIRED, GateAlarms.ACTION_SESSION_END -> onDeadline()
+                }
+            }
+        }
+
     override fun onServiceConnected() {
         store = GateStore(this)
+        try {
+            registerReceiver(
+                deadlineReceiver,
+                IntentFilter(GateAlarms.ACTION_POOL_EXPIRED).apply {
+                    addAction(GateAlarms.ACTION_SESSION_END)
+                },
+                RECEIVER_NOT_EXPORTED,
+            )
+        } catch (t: Throwable) {
+            Log.e(TAG, "deadline receiver register failed", t)
+        }
         // The mirror only loads while GateService runs: guarantee it here so the
         // gate can never idle on a cold mirror (M3 lesson). MainActivity + boot
         // cover the remaining paths; failures are logged, never fatal.
@@ -46,11 +76,6 @@ class ZenGateService : AccessibilityService() {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         try {
             val pkg = event.packageName?.toString().orEmpty()
-            // Survival surfaces (unlock handoffs, shade) are transient: they must
-            // not anchor alarm-time launches, so they leave the sticky value alone.
-            if (pkg !in GatePolicy.survivalPackages) {
-                GateState.lastForegroundPkg = pkg.ifEmpty { null }
-            }
             val gated = GatePolicy.isGated(pkg, packageName, imePackages(), GateState.userWhitelist)
             Log.d(TAG, "foreground=$pkg gated=$gated")
             if (!gated) {
@@ -123,6 +148,58 @@ class ZenGateService : AccessibilityService() {
         GateAlarms.cancelPoolExpiry(this)
         persist(cur)
         launchBlock(pkg, cur, cfg)
+    }
+
+    override fun onUnbind(intent: Intent?): Boolean {
+        try {
+            unregisterReceiver(deadlineReceiver)
+        } catch (t: Throwable) {
+            Log.e(TAG, "deadline receiver unregister failed", t)
+        }
+        return super.onUnbind(intent)
+    }
+
+    private fun onDeadline() {
+        scope.launch {
+            try {
+                // Store-direct: the mirror may trail the manifest receiver's write.
+                val snap = store.snapshot.first().poolState()
+                val cfg = store.config.first()
+                val enabled = store.enabled.first()
+                val list = store.whitelist.first()
+                val wall = System.currentTimeMillis()
+                val root =
+                    try {
+                        rootInActiveWindow?.packageName?.toString()
+                    } catch (t: Throwable) {
+                        null
+                    }
+                val power = getSystemService(Context.POWER_SERVICE) as PowerManager
+                val keys = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+                val remaining = PoolEngine.sessionRemainingMs(snap, wall, cfg)
+                when (
+                    val v =
+                        DeadlineVerdict.decide(
+                            enabled,
+                            remaining,
+                            root,
+                            GateState.lastGatedPkg,
+                            packageName,
+                            list,
+                            keys.isKeyguardLocked,
+                            power.isInteractive,
+                        )
+                ) {
+                    is DeadlineVerdict.Outcome.Launch -> {
+                        Log.d(TAG, "deadline launch pkg=${v.pkg} root=$root")
+                        launchBlock(v.pkg, snap, cfg)
+                    }
+                    DeadlineVerdict.Outcome.Skip -> Log.d(TAG, "deadline skipped root=$root")
+                }
+            } catch (t: Throwable) {
+                Log.e(TAG, "deadline decision failed", t)
+            }
+        }
     }
 
     private fun launchBlock(

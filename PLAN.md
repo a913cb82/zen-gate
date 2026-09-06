@@ -9,13 +9,14 @@ Everything on the phone is blocked except a survival whitelist + user-whiteliste
 ## 2. Functional spec (frozen)
 
 - **Default-deny.** Any foreground app not on the whitelist drains the pool at 1s/s. Whitelisted apps: unlimited, no drain.
-- **Launcher is a transit surface:** idling on the launcher neither drains the pool nor grants refuge — but an empty pool still shows the block there (no safe haven). This keeps grace usable for actual app opens instead of evaporating on the home screen.
-- **Free pool:** 10s granted after every unlock. Rolling refill: +20s every 5 min, hard cap 20s (never stacks).
+- **Unlock grace:** every phone unlock (fingerprint) grants 10s of free use and starts the drain clock immediately — the unlock reveal often emits no window event, so the grant opens the drain segment itself. After ~10s the block appears wherever you are (home included).
+- **No rolling refill:** the pool comes only from unlock grants (and the midnight reset). No timers drip-feed it.
 - **Block screen:** when pool hits 0 outside whitelist/survival list, show fully opaque fullscreen block over whatever is showing (including launcher, settings). Phone use during the wait is impossible — the block covers everything.
 - **Wait penalty:** 30s + 10s × unlocks-today. Countdown runs only while the block is showing.
-- **Unlock:** tapping Open after the countdown grants a 5-min session of arbitrary use, increments unlock count.
-- **Session end:** after the allowed session is consumed → 10s grace pool → back to block screen (if outside whitelist).
-- **Screen off pauses the session:** screen-off time doesn't consume the 5-min allowance. Backstop: the session **force-finishes 30 min after start** regardless (wall clock), even if the screen was off almost the whole time.
+- **Unlock:** tapping Open after the countdown grants a 5-min wall-clock session of arbitrary use, increments unlock count. The pool is untouched (stays 0).
+- **Session end:** the deadline clears the session; the block reappears if outside a whitelisted app. Expiry inside a whitelisted app stays quiet until you leave it (the exit event blocks instantly, pool is 0).
+- **Screen off pauses drain, not sessions:** screen-off time is deducted from the pool and the drain pauses; sessions are plain wall-clock deadlines unaffected by screen state.
+- **Deadline launches decide on live truth:** alarm-time launches query usage-events for the actually-visible package (HyperOS blinds a11y window introspection and hides other processes, so sticky event state + process-importance oracles were rejected after live proof). Gated → launch; whitelisted → stay quiet (entry path blocks on exit); no window + unlocked screen → anchor at last gated surface.
 - **Alarms always ring through.** Clock/alarm fullscreen intents are never blocked, drained, or delayed.
 - **Midnight reset:** unlocks = 0, pool = 10.
 - **Launcher and Settings are blockable.** No safe haven; "kick to home" does not exist.
@@ -51,12 +52,9 @@ Alarm intents need care beyond the package entry: a firing alarm's fullscreen UI
 - UI also exposes **all** tuning knobs (global, not per-app), with the spec defaults:
   - `session_allow_sec` = 300 (5-min unlock allowance)
   - `unlock_pool_sec` = 10 (free pool granted on unlock)
-  - `refill_amount_sec` = 20, `refill_interval_sec` = 300 (rolling refill)
-  - `pool_cap_sec` = 20 (hard ceiling)
   - `base_wait_sec` = 30 (block wait before first unlock)
   - `wait_increment_sec` = 10 (added per unlock today)
-  - `session_hard_limit_sec` = 1800 (force-finish 30 min after start incl. screen-off time)
-  - `reset_time` = 00:00 (midnight reset)
+  - (removed: refill amount/interval/cap, session hard limit, reset-time customization)
 
 ## 4. Detection — AccessibilityService (primary)
 

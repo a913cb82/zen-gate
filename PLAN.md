@@ -101,7 +101,7 @@ Core rule: the app never runs a ticking loop in any state. Every countdown is a 
 
 1. **M1 — Gate skeleton:** AccessibilityService logging foreground packages + hardcoded whitelist; toast instead of block. Prove instant detection on the 15 Ultra. ✅ done (with known issue below).
 2. **M5-core — hardening ✅ done and proven 2026-09-06:** GateService FGS presence, battery-unrestricted + autostart, boot receiver → exact-alarm → FGS restart chain (verified across a real reboot: autostart, alarm set, FGS restored, feed alive from boot, verify-feed.sh PASS post-boot).
-3. **M2 — Block screen:** opaque Activity with fixed 30s countdown + Open → 5-min session. Launcher/settings covered. Includes master disable (notification action + in-app switch, persisted, default on).
+3. **M2 — Block screen ✅ done 2026-09-06:** opaque Activity with fixed 30s countdown + Open → 5-min session. Verified E2E on-device: countdown at 1/s, unlock→session→expiry→re-block, kill switch both ways, Back swallowed. Includes master disable (notification action + in-app switch, persisted, default on).
 4. **M3 — Pool engine:** 10s pool, refill/cap, escalating penalty, midnight reset, persisted state.
 5. **M4 — Whitelist UI:** app picker + toggles + tuning knobs in DataStore.
 6. **M5-ui — onboarding screens:** in-app checklist UI (restricted settings, accessibility, autostart, battery) + break-glass doc. The headless hardening already landed in M5-core.

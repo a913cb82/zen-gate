@@ -40,16 +40,20 @@ data class EngineSnapshot(
 
 /** Persisted gate state. Whitelist + tuning knobs join these keys in M4. */
 class GateStore(
-    private val context: Context,
+    context: Context,
 ) {
+    // Application context: exactly one DataStore per file. Activity/Service contexts
+    // would spawn rival instances that silently lose writes (M3 lesson).
+    private val app: Context = context.applicationContext
+
     val enabled: Flow<Boolean> =
-        context.gateDataStore.data.map { it[GateStoreKeys.ENABLED] ?: true }
+        app.gateDataStore.data.map { it[GateStoreKeys.ENABLED] ?: true }
 
     val sessionExpiryMs: Flow<Long> =
-        context.gateDataStore.data.map { it[GateStoreKeys.SESSION_EXPIRY_MS] ?: 0L }
+        app.gateDataStore.data.map { it[GateStoreKeys.SESSION_EXPIRY_MS] ?: 0L }
 
     val snapshot: Flow<EngineSnapshot> =
-        context.gateDataStore.data.map {
+        app.gateDataStore.data.map {
             EngineSnapshot(
                 poolSec = it[GateStoreKeys.POOL_SEC] ?: 10,
                 usagesToday = it[GateStoreKeys.USAGES] ?: 0,
@@ -61,15 +65,15 @@ class GateStore(
         }
 
     suspend fun setEnabled(value: Boolean) {
-        context.gateDataStore.edit { it[GateStoreKeys.ENABLED] = value }
+        app.gateDataStore.edit { it[GateStoreKeys.ENABLED] = value }
     }
 
     suspend fun setSessionExpiryMs(value: Long) {
-        context.gateDataStore.edit { it[GateStoreKeys.SESSION_EXPIRY_MS] = value }
+        app.gateDataStore.edit { it[GateStoreKeys.SESSION_EXPIRY_MS] = value }
     }
 
     suspend fun savePool(state: PoolState) {
-        context.gateDataStore.edit {
+        app.gateDataStore.edit {
             it[GateStoreKeys.POOL_SEC] = state.poolSec
             it[GateStoreKeys.USAGES] = state.usagesToday
             it[GateStoreKeys.DAY_ID] = state.dayId

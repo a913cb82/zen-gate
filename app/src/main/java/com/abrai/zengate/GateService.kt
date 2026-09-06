@@ -83,6 +83,10 @@ class GateService : Service() {
                 ) {
                     val line = liveLine(enabled, snap.poolState(), cfg, list, fg)
                     if (line != lastStatusLine) {
+                        Log.d(
+                            TAG,
+                            "status line=\"$line\" showing=${BlockActivity.isShowing} fg=$fg pool=${snap.poolSec}",
+                        )
                         lastStatusLine = line
                         manager.notify(NOTIFICATION_ID, buildNotification(enabled))
                     }

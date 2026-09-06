@@ -125,6 +125,8 @@ class BlockActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
+        // Visibility (not just existence) drives the notification posture.
+        isShowing = false
         // Any exit (home press, screen off, shade tug) invalidates the wait.
         // onResume restarts it fresh: the countdown only ever runs while shown.
         wasPaused = true
@@ -132,6 +134,7 @@ class BlockActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        isShowing = true
         if (wasPaused) {
             wasPaused = false
             Log.d(TAG, "resumed after exit; wait reset pkg=$currentPkg")

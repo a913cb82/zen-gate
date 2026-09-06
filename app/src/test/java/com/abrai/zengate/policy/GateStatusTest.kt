@@ -59,6 +59,23 @@ class GateStatusTest {
     }
 
     @Test
+    fun `block on screen forces blocking even over whitelisted overlay`() {
+        assertEquals(
+            Blocking(3),
+            GateStatus.describe(
+                true,
+                0,
+                0,
+                0,
+                3,
+                "com.ichi2.anki",
+                setOf("com.ichi2.anki"),
+                blockShowing = true,
+            ),
+        )
+    }
+
+    @Test
     fun `unknown foreground falls back to pool rules`() {
         assertEquals(
             FreeTime(5),

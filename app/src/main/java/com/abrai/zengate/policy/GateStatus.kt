@@ -35,9 +35,13 @@ object GateStatus {
         usagesToday: Int,
         foregroundPkg: String?,
         userWhitelist: Set<String>,
+        blockShowing: Boolean = false,
     ): Status {
         if (!enabled) return Status.Paused
         if (sessionRemainingMs > 0) return Status.Session(sessionExpiryWallMs)
+        // The block on screen is the posture: overlays (edge controls, shade)
+        // passing over it must not flip the line to Unlimited.
+        if (blockShowing) return Status.Blocking(usagesToday)
         if (foregroundPkg != null && foregroundPkg in userWhitelist) {
             return Status.Whitelisted(foregroundPkg)
         }

@@ -213,6 +213,7 @@ class GateService : Service() {
                     snap.usagesToday,
                     fg,
                     list,
+                    BlockActivity.isShowing,
                 )
         ) {
             com.abrai.zengate.policy.GateStatus.Status.Paused -> "Paused — tap Enable gate to resume"

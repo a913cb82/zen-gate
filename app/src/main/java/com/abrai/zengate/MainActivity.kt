@@ -2,14 +2,11 @@ package com.abrai.zengate
 
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.drawable.Drawable
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,7 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -38,7 +35,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.abrai.zengate.policy.ZenConfig
@@ -53,6 +49,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         // The gate needs foreground presence (ScreenZen-shape): ensure it on every launch.
         try {
             startForegroundService(Intent(this, GateService::class.java))
@@ -71,22 +68,24 @@ class MainActivity : ComponentActivity() {
                     )
                 }
                 var screen by remember { mutableStateOf("home") }
-                when (screen) {
-                    "picker" -> pickerScreen(store, onBack = { screen = "home" })
-                    "knobs" -> knobsScreen(store, onBack = { screen = "home" })
-                    "setup" ->
-                        setupScreen(
-                            store,
-                            onBack = { screen = "home" },
-                            onFix = { id -> fixCheck(id) },
-                        )
-                    else ->
-                        homeScreen(
-                            store,
-                            onPicker = { screen = "picker" },
-                            onKnobs = { screen = "knobs" },
-                            onSetup = { screen = "setup" },
-                        )
+                zenTheme {
+                    when (screen) {
+                        "picker" -> pickerScreen(store, onBack = { screen = "home" })
+                        "knobs" -> knobsScreen(store, onBack = { screen = "home" })
+                        "setup" ->
+                            setupScreen(
+                                store,
+                                onBack = { screen = "home" },
+                                onFix = { id -> fixCheck(id) },
+                            )
+                        else ->
+                            homeScreen(
+                                store,
+                                onPicker = { screen = "picker" },
+                                onKnobs = { screen = "knobs" },
+                                onSetup = { screen = "setup" },
+                            )
+                    }
                 }
             }
         }
@@ -138,7 +137,10 @@ private fun homeScreen(
     androidx.compose.runtime.LaunchedEffect(Unit) {
         missing.value = SetupChecks.missingAutoCount(context)
     }
-    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(
+        Modifier.fillMaxSize().statusBarsPadding().padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
         Text(if (enabled) "Zen Gate: ON" else "Zen Gate: PAUSED")
         Text("${whitelist.size} apps whitelisted")
         if (missing.value > 0) {
@@ -167,28 +169,6 @@ private fun loadApps(pm: PackageManager): List<AppEntry> {
         .sortedBy { it.label.lowercase() }
 }
 
-private fun appIcon(
-    pm: PackageManager,
-    pkg: String,
-) = try {
-    pm.getApplicationIcon(pkg).toImageBitmap()
-} catch (t: Throwable) {
-    null
-}
-
-private fun Drawable.toImageBitmap() =
-    try {
-        val w = if (intrinsicWidth > 0) intrinsicWidth else 144
-        val h = if (intrinsicHeight > 0) intrinsicHeight else 144
-        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bmp)
-        setBounds(0, 0, canvas.width, canvas.height)
-        draw(canvas)
-        bmp.asImageBitmap()
-    } catch (t: Throwable) {
-        null
-    }
-
 @Composable
 private fun pickerScreen(
     store: GateStore,
@@ -203,17 +183,20 @@ private fun pickerScreen(
     val whitelist by store.whitelist.collectAsState(initial = emptySet())
     var query by remember { mutableStateOf("") }
     val shown =
-        remember(query, apps) {
+        remember(query, apps, whitelist) {
             val all = apps ?: emptyList()
-            if (query.isBlank()) {
-                all
-            } else {
-                all.filter {
-                    it.label.contains(query, ignoreCase = true) || it.pkg.contains(query, ignoreCase = true)
+            val filtered =
+                if (query.isBlank()) {
+                    all
+                } else {
+                    all.filter {
+                        it.label.contains(query, ignoreCase = true) || it.pkg.contains(query, ignoreCase = true)
+                    }
                 }
-            }
+            // Ticked apps float to the top; each group lexicographic.
+            filtered.sortedWith(compareBy({ it.pkg !in whitelist }, { it.label.lowercase() }))
         }
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
+    Column(Modifier.fillMaxSize().statusBarsPadding().padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Button(onClick = onBack) { Text("Back") }
             Spacer(Modifier.width(12.dp))
@@ -236,11 +219,6 @@ private fun pickerScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                 ) {
-                    val icon = remember(app.pkg) { appIcon(pm, app.pkg) }
-                    if (icon != null) {
-                        Image(icon, contentDescription = null, modifier = Modifier.size(36.dp))
-                    }
-                    Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(app.label)
                         Text(app.pkg, style = MaterialTheme.typography.bodySmall)
@@ -289,7 +267,7 @@ private fun knobsScreen(
     val scope = rememberCoroutineScope()
     val cfg by store.config.collectAsState(initial = ZenConfig())
     val def = ZenConfig()
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
+    Column(Modifier.fillMaxSize().statusBarsPadding().padding(16.dp)) {
         Button(onClick = onBack) { Text("Back") }
         Spacer(Modifier.height(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -368,7 +346,7 @@ private fun setupScreen(
     val context = store.appContext
     var refresh by remember { mutableStateOf(0) }
     val checks = remember(refresh) { SetupChecks.all(context) }
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
+    Column(Modifier.fillMaxSize().statusBarsPadding().padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Button(onClick = onBack) { Text("Back") }
             Spacer(Modifier.width(12.dp))

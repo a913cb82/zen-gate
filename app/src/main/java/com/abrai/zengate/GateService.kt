@@ -188,6 +188,10 @@ class GateService : Service() {
             val cfg = GateState.config
             val snap = GateState.poolState()
             store.savePool(snap)
+            // Screen on but still locked (lockscreen camera/torch lighting the
+            // screen): never re-arm the drain while the keyguard is up.
+            val keys = getSystemService(KeyguardManager::class.java)
+            if (keys.isKeyguardLocked) return@launch
             if (!PoolEngine.hasSession(snap) &&
                 GateState.lastGatedPkg != null &&
                 snap.poolSec > 0 &&

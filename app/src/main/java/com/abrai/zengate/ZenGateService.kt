@@ -1,8 +1,10 @@
 package com.abrai.zengate
 
 import android.accessibilityservice.AccessibilityService
+import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
+import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
@@ -24,6 +26,12 @@ import kotlinx.coroutines.launch
 class ZenGateService : AccessibilityService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var store: GateStore
+    private val keyguardManager: KeyguardManager by lazy {
+        getSystemService(KeyguardManager::class.java)
+    }
+    private val powerManager: PowerManager by lazy {
+        getSystemService(PowerManager::class.java)
+    }
     private var cachedImes: Set<String> = emptySet()
     private var imeCacheAt: Long = 0
     private var cachedLaunchers: Set<String> = emptySet()
@@ -51,6 +59,10 @@ class ZenGateService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        // Locked or dark: the gate does not apply (lockscreen camera/torch,
+        // secure surfaces). Touch nothing so the post-unlock truth comes from
+        // onPhoneUnlock plus fresh events.
+        if (!powerManager.isInteractive || keyguardManager.isKeyguardLocked) return
         try {
             val pkg = event.packageName?.toString().orEmpty()
             val gated = GatePolicy.isGated(pkg, packageName, imePackages(), GateState.userWhitelist)
@@ -64,7 +76,12 @@ class ZenGateService : AccessibilityService() {
             Log.d(TAG, "foreground=$pkg gated=$gated")
             if (!gated) {
                 settleDrain(keepDraining = true)
-                GateState.lastGatedPkg = null
+                // Survival overlays (shade, gesture handoffs) are transparent:
+                // keep the last gated anchor so they can't blind the gate.
+                // Real non-gated surfaces (whitelist, IME, our UI) reset it.
+                if (pkg !in GatePolicy.survivalPackages) {
+                    GateState.lastGatedPkg = null
+                }
                 return
             }
             onGated(pkg)
@@ -190,6 +207,8 @@ class ZenGateService : AccessibilityService() {
         cur: com.abrai.zengate.policy.PoolState,
         cfg: ZenConfig,
     ) {
+        // Belt-and-braces with the onAccessibilityEvent guard: never cover the lockscreen.
+        if (!powerManager.isInteractive || keyguardManager.isKeyguardLocked) return
         startActivity(
             Intent(this, BlockActivity::class.java)
                 .putExtra(BlockActivity.EXTRA_PACKAGE, pkg)

@@ -16,7 +16,8 @@ Everything on the phone is blocked except a survival whitelist + user-whiteliste
 - **Unlock:** tapping Open after the countdown grants a 5-min wall-clock session of arbitrary use, increments unlock count. The pool is untouched (stays 0).
 - **Session end:** the deadline clears the session; the block reappears if outside a whitelisted app. Expiry inside a whitelisted app stays quiet until you leave it (the exit event blocks instantly, pool is 0).
 - **Screen off pauses drain, not sessions:** screen-off time is deducted from the pool and the drain pauses; sessions are plain wall-clock deadlines unaffected by screen state.
-- **Deadline launches decide on live truth:** alarm-time launches query usage-events for the actually-visible package (HyperOS blinds a11y window introspection and hides other processes, so sticky event state + process-importance oracles were rejected after live proof). Gated → launch; whitelisted → stay quiet (entry path blocks on exit); no window + unlocked screen → anchor at last gated surface.
+- **Deadline launches decide on live truth:** alarm-time launches query usage-events for the actually-visible package (HyperOS blinds a11y window introspection and hides other processes, so sticky event state + process-importance oracles were rejected after live proof). Gated → launch; whitelisted use-surface → stay quiet (entry path blocks on exit); transparent system overlay (survival) → decide by the sticky last-event anchor; no window + unlocked screen → anchor at last gated surface.
+- **Locked or dark means no gate at all.** Window events and screen-on drain re-arm while the keyguard is up are ignored entirely (lockscreen camera/torch/secure surfaces always work); enforcement resumes on unlock via the grace grant plus fresh events.
 - **Alarms always ring through.** Clock/alarm fullscreen intents are never blocked, drained, or delayed.
 - **Midnight reset:** unlocks = 0, pool = 10.
 - **Launcher and Settings are blockable.** No safe haven; "kick to home" does not exist.
@@ -34,6 +35,8 @@ Everything on the phone is blocked except a survival whitelist + user-whiteliste
 | Emergency (`com.android.emergency` etc.) | Safety |
 | SystemUI (`com.android.systemui`) — special-cased, not counted | Shade/recents/power menu are OS surfaces; can't be covered, so ignore (no drain, no block) rather than fight |
 | Clock / alarm (`com.google.android.deskclock` — verified default + `SHOW_ALARMS` handler) | Alarms must ring through: never block, drain, or cover fullscreen alarm intents |
+| Gesture overlays (`eu.toneiv.ubktouch` — this device) | Transient unlock-handoff/gesture surface: transparent to the gate (never anchors launches, never blinds the last-gated anchor) |
+| MIUI plugin surfaces (`miui.systemui.plugin` — torch/volume overlays, no launcher activity) | System UI with no picker presence: never gated |
 
 Alarm intents need care beyond the package entry: a firing alarm's fullscreen UI must be let through even mid-block (never launch/keep the block over it).
 

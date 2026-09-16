@@ -15,6 +15,9 @@ object GatePolicy {
             // Unlock-handoff overlay on this device: transient (fires at unlock,
             // never again), so it must never anchor alarm-time launches.
             "eu.toneiv.ubktouch",
+            // MIUI system plugin: torch/volume/overlay surfaces with no launcher
+            // activity (unlistable in the picker). System UI, never gated.
+            "miui.systemui.plugin",
         )
 
     fun isGated(

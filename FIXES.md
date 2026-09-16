@@ -8,7 +8,7 @@ adb with ledger below. Overlay transparency work (item #4) runs as Stages 1–3 
 
 | When | What | Active | Cumulative |
 |---|---|---|---|
-| — | (nothing spent yet this program) | 0s | 0s |
+| Wave B/C | package query + install-verify + combined log pull | ~31s | 31s |
 
 Install streaming/Protect waits are reported separately, not charged here.
 
@@ -32,6 +32,10 @@ Install streaming/Protect waits are reported separately, not charged here.
 - 2026-09-16: program opened, this file created. Tree @ 7866af9 clean.
 
 - Wave A implemented (57/57 green, lint clean): #1 #2 #8 #9 + Stage-1 probe + #10 row.
+- STAGE-1 FINDING (0.8s pull): `event.windowId` is **-1 on HyperOS** — the
+  event→window join is dead. Census datum added (window types visible via API
+  independent of attribution); verdict on getWindows() pending one more pull.
+- #3: single sample so far (unlock→first-event 1s); buffer too shallow for p99.
   #5 closed infeasible. #3 pending log pull. #6/#7 closed by docs. Mid-fix notes:
   event `windowId` exists (join seam compiles); per-window pkg attribution does
   NOT (no packageName on window info) — probe joins event-winId → window type.

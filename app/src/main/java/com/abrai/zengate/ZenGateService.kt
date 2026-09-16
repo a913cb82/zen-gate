@@ -309,7 +309,15 @@ class ZenGateService : AccessibilityService() {
             if (match != null && kind != null && pkg.isNotEmpty()) {
                 windowKindCache[pkg] = kind to SystemClock.elapsedRealtime()
             }
-            Log.d(TAG, "WINPROBE pkg=$pkg winId=$windowId kind=$kind")
+            // Window-list census (no attribution needed): proves whether the
+            // API sees anything at all here, independent of the -1 join.
+            val census =
+                try {
+                    windows.groupBy({ it.type }, { it.isActive to it.isFocused }).mapValues { it.value.size }
+                } catch (t: Throwable) {
+                    "blind"
+                }
+            Log.d(TAG, "WINPROBE pkg=$pkg winId=$windowId kind=$kind census=$census")
         } catch (t: Throwable) {
             Log.d(TAG, "WINPROBE failed (API blind here?)")
         }

@@ -2,6 +2,8 @@
 
 Personal-use Android app (sideloaded, no Play Store). Global phone-use gate for Xiaomi 15 Ultra (HyperOS 3 / Android 16, API 36 — verified via adb 2026-09-06). `minSdk 34` — 15 Ultra only, no older-device support. `target/compileSdk 36`.
 
+Portability (hardcoded packages, per-device setup, per-user state): see `PORTABILITY.md`.
+
 ## 1. One-liner
 
 Everything on the phone is blocked except a survival whitelist + user-whitelisted apps. Non-whitelisted use drains a small free-time pool; when empty, a fully opaque block screen forces an escalating wait before granting 5 minutes of free use. Counters reset at midnight.

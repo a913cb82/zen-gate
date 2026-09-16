@@ -42,6 +42,16 @@ object GatePolicy {
         throttleMs: Long = 5_000,
     ): Boolean = force && nowMs - lastForcedMs > throttleMs
 
+    /**
+     * Transparent system chrome (survival list plus user-declared overlays):
+     * looked *through*, never anchored on. Whitelisted real apps are NOT
+     * transparent — they are *used*.
+     */
+    fun isTransparent(
+        pkg: String,
+        transparentPkgs: Set<String>,
+    ): Boolean = pkg in survivalPackages || pkg in transparentPkgs
+
     fun isGated(
         foregroundPackage: String,
         ownPackage: String,

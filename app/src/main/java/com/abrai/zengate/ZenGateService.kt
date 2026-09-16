@@ -70,16 +70,21 @@ class ZenGateService : AccessibilityService() {
             // verdict: transient system overlays (shade, unlock handoff,
             // keyboards, our own UI) would make it flap on every swipe — and a
             // whitelisted transient must never read as "using a free app".
-            if (gated || (pkg in GateState.userWhitelist && pkg !in GatePolicy.survivalPackages)) {
+            if (gated ||
+                (
+                    pkg in GateState.userWhitelist &&
+                        !GatePolicy.isTransparent(pkg, GateState.transparentPkgs)
+                )
+            ) {
                 GateState.lastEventPkg.value = pkg
             }
             Log.d(TAG, "foreground=$pkg gated=$gated")
             if (!gated) {
                 settleDrain(keepDraining = true)
-                // Survival overlays (shade, gesture handoffs) are transparent:
-                // keep the last gated anchor so they can't blind the gate.
-                // Real non-gated surfaces (whitelist, IME, our UI) reset it.
-                if (pkg !in GatePolicy.survivalPackages) {
+                // Transparent overlays (shade, gesture handoffs, user-declared)
+                // are looked through: keep the last gated anchor so they can't
+                // blind the gate. Real non-gated surfaces reset it.
+                if (!GatePolicy.isTransparent(pkg, GateState.transparentPkgs)) {
                     GateState.lastGatedPkg = null
                 }
                 return
@@ -168,6 +173,7 @@ class ZenGateService : AccessibilityService() {
             sessionRemainingMs: Long,
             ownPkg: String,
             userWhitelist: Set<String>,
+            transparentPkgs: Set<String> = emptySet(),
             keyguardLocked: Boolean,
             interactive: Boolean,
             usageFgPkg: String?,
@@ -188,14 +194,15 @@ class ZenGateService : AccessibilityService() {
             val root = usageFgPkg ?: a11yRoot
             val v =
                 DeadlineVerdict.decide(
-                    enabled,
-                    sessionRemainingMs,
-                    root,
-                    GateState.lastEventPkg.value,
-                    ownPkg,
-                    userWhitelist,
-                    keyguardLocked,
-                    interactive,
+                    enabled = enabled,
+                    sessionRemainingMs = sessionRemainingMs,
+                    rootPkg = root,
+                    lastEventPkg = GateState.lastEventPkg.value,
+                    ownPkg = ownPkg,
+                    userWhitelist = userWhitelist,
+                    transparentPkgs = transparentPkgs,
+                    keyguardLocked = keyguardLocked,
+                    interactive = interactive,
                 )
             Log.d(TAG, "deadline decided root=$root verdict=$v")
             return v

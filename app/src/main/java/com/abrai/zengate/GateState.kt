@@ -14,6 +14,9 @@ object GateState {
 
     @Volatile var userWhitelist: Set<String> = emptySet()
 
+    /** User-declared transparent overlays (looked through, never anchored on). */
+    @Volatile var transparentPkgs: Set<String> = emptySet()
+
     /** True once GateService has mirrored the store. Persist/decide gates on this. */
     @Volatile var storeLoaded: Boolean = false
 

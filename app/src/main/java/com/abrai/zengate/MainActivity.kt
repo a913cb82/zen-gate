@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -22,6 +24,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
@@ -35,6 +38,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.abrai.zengate.policy.ZenConfig
@@ -67,6 +74,13 @@ class MainActivity : ComponentActivity() {
                             "com.abrai.zengate",
                         ),
                         version = 2,
+                    )
+                    store.seedTransparent(
+                        setOf(
+                            "eu.toneiv.ubktouch",
+                            "miui.systemui.plugin",
+                        ),
+                        version = 1,
                     )
                 }
                 var screen by remember { mutableStateOf("home") }
@@ -171,6 +185,45 @@ private fun loadApps(pm: PackageManager): List<AppEntry> {
         .sortedBy { it.label.lowercase() }
 }
 
+/**
+ * Minimal stacked-diamonds glyph (hand-drawn: no icon dependency for one
+ * button). Tinted primary when on, faint when off.
+ */
+@Composable
+private fun overlayGlyph(
+    active: Boolean,
+    description: String,
+) {
+    val tint =
+        if (active) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+        }
+    Canvas(
+        modifier =
+            Modifier
+                .size(24.dp)
+                .semantics { contentDescription = description },
+    ) {
+        val cx = size.width / 2f
+        val dw = size.width * 0.36f
+        val dh = size.height * 0.15f
+        val stroke = (size.width * 0.07f).coerceAtLeast(1.5f)
+        for (cy in listOf(size.height * 0.2f, size.height * 0.44f, size.height * 0.68f)) {
+            val diamond =
+                Path().apply {
+                    moveTo(cx, cy - dh)
+                    lineTo(cx + dw, cy)
+                    lineTo(cx, cy + dh)
+                    lineTo(cx - dw, cy)
+                    close()
+                }
+            drawPath(diamond, tint, style = Stroke(stroke))
+        }
+    }
+}
+
 @Composable
 private fun pickerScreen(
     store: GateStore,
@@ -183,6 +236,7 @@ private fun pickerScreen(
         apps = withContext(Dispatchers.Default) { loadApps(pm) }
     }
     val whitelist by store.whitelist.collectAsState(initial = emptySet())
+    val transparent by store.transparent.collectAsState(initial = emptySet())
     var query by remember { mutableStateOf("") }
     // Ticked-top order freezes while toggling (re-sorts on filter/data change only),
     // so rows never teleport under the finger.
@@ -219,6 +273,7 @@ private fun pickerScreen(
         LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             items(ordered, key = { it.pkg }) { app ->
                 val checked = app.pkg in whitelist
+                val seeThrough = app.pkg in transparent
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -226,6 +281,14 @@ private fun pickerScreen(
                     Column(Modifier.weight(1f)) {
                         Text(app.label)
                         Text(app.pkg, style = MaterialTheme.typography.bodySmall)
+                    }
+                    // Transparent overlay: looked through, never anchored on.
+                    // Faint when off so the whitelist checkbox stays primary.
+                    IconButton(onClick = { scope.launch { store.setTransparent(app.pkg, !seeThrough) } }) {
+                        overlayGlyph(
+                            active = seeThrough,
+                            description = "Transparent overlay for ${app.label}",
+                        )
                     }
                     Checkbox(
                         checked = checked,

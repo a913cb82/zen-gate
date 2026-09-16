@@ -35,6 +35,43 @@ class DeadlineVerdictTest {
     }
 
     @Test
+    fun `transparent overlay root falls through to the sticky anchor`() {
+        // Declared overlay (not survival) over a gated app: decide by the anchor.
+        assertEquals(
+            Launch("com.instagram.android"),
+            DeadlineVerdict.decide(
+                enabled = true,
+                sessionRemainingMs = 0,
+                rootPkg = "com.example.overlay",
+                lastEventPkg = "com.instagram.android",
+                ownPkg = own,
+                userWhitelist = whitelist,
+                transparentPkgs = setOf("com.example.overlay"),
+                keyguardLocked = false,
+                interactive = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `transparent overlay over whitelisted app stays quiet`() {
+        assertEquals(
+            Skip,
+            DeadlineVerdict.decide(
+                enabled = true,
+                sessionRemainingMs = 0,
+                rootPkg = "com.example.overlay",
+                lastEventPkg = "com.ichi2.anki",
+                ownPkg = own,
+                userWhitelist = whitelist,
+                transparentPkgs = setOf("com.example.overlay"),
+                keyguardLocked = false,
+                interactive = true,
+            ),
+        )
+    }
+
+    @Test
     fun `static whitelisted app never launches`() {
         // 21:56 incident: live root is Anki -> stay quiet; its exit emits
         // window events and the entry path blocks then.

@@ -46,3 +46,27 @@ Install streaming/Protect waits are reported separately, not charged here.
   all removed (tree clean, suite back to baseline+Wave-A). Transparency goes
   the declared route (per-app toggle, proposal pending approval), not the
   detected route.
+
+## 2026-09-16 late session: transparent toggle IN FLIGHT (not installed, not finished)
+
+Phone state: last INSTALLED build = clean Wave-A build (probe removed), verified
+working (service alive). The transparent-toggle build is NOT on the phone.
+
+Tree state at wrap-up:
+- `GatePolicy.isTransparent` + `DeadlineVerdict.transparentPkgs` + store/state/
+  service wiring + picker Layers toggle + transparent seeds: IMPLEMENTED.
+- Self-caught during test run: transparency must precede the gating check
+  (a declared-transparent non-survival pkg reads as gated) — fixed, rerun in flight.
+- Icons detour: material-icons-extended breaks LINT resolution
+  (desktop artifact); reverted to zero-dep hand-drawn layers glyph in MainActivity.
+- Combine 6-flow overload doesn't exist in coroutines 1.11: mirror uses a
+  separate `store.transparent` collector instead.
+- GateService background build (ktlint+tests+assemble+lint) was still running
+  at wrap-up — see /tmp/gate.log for its verdict.
+
+TODO on resume:
+1. Check /tmp/gate.log (or rerun full gate); fix any remainder.
+2. Install + screenshot picker (verify glyph renders) + tap-toggle test.
+3. User acceptance: gesture-over-Instagram blocks on time.
+4. #3 ignore-window: keep collecting unlock→event gaps from routine pulls.
+5. #8 reboot acceptance on a natural reboot.

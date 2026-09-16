@@ -24,6 +24,8 @@ object GateStoreKeys {
     val USAGES = intPreferencesKey("usages")
     val DAY_ID = stringPreferencesKey("day_id")
     val WHITELIST = stringSetPreferencesKey("whitelist")
+    val TRANSPARENT = stringSetPreferencesKey("transparent")
+    val SEED_TRANSPARENT_VERSION = intPreferencesKey("seed_transparent_version")
     val SEED_VERSION = intPreferencesKey("seed_version")
     val K_SESSION_ALLOW = longPreferencesKey("k_session_allow")
     val K_QUICK_WAIT = longPreferencesKey("k_quick_wait")
@@ -69,6 +71,9 @@ class GateStore(
     val whitelist: Flow<Set<String>> =
         app.gateDataStore.data.map { it[GateStoreKeys.WHITELIST] ?: emptySet() }
 
+    val transparent: Flow<Set<String>> =
+        app.gateDataStore.data.map { it[GateStoreKeys.TRANSPARENT] ?: emptySet() }
+
     val seedVersion: Flow<Int> =
         app.gateDataStore.data.map { it[GateStoreKeys.SEED_VERSION] ?: 0 }
 
@@ -107,6 +112,29 @@ class GateStore(
         app.gateDataStore.edit {
             val cur = it[GateStoreKeys.WHITELIST] ?: emptySet()
             it[GateStoreKeys.WHITELIST] = if (listed) cur + pkg else cur - pkg
+        }
+    }
+
+    suspend fun setTransparent(
+        pkg: String,
+        transparent: Boolean,
+    ) {
+        app.gateDataStore.edit {
+            val cur = it[GateStoreKeys.TRANSPARENT] ?: emptySet()
+            it[GateStoreKeys.TRANSPARENT] = if (transparent) cur + pkg else cur - pkg
+        }
+    }
+
+    /** Versioned seeding for the transparent set (mirrors whitelist seeding). */
+    suspend fun seedTransparent(
+        suggested: Set<String>,
+        version: Int,
+    ) {
+        app.gateDataStore.edit {
+            if ((it[GateStoreKeys.SEED_TRANSPARENT_VERSION] ?: 0) < version) {
+                it[GateStoreKeys.TRANSPARENT] = (it[GateStoreKeys.TRANSPARENT] ?: emptySet()) + suggested
+                it[GateStoreKeys.SEED_TRANSPARENT_VERSION] = version
+            }
         }
     }
 

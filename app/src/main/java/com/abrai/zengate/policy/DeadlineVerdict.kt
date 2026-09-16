@@ -26,6 +26,7 @@ object DeadlineVerdict {
         lastEventPkg: String?,
         ownPkg: String,
         userWhitelist: Set<String>,
+        transparentPkgs: Set<String> = emptySet(),
         keyguardLocked: Boolean,
         interactive: Boolean,
     ): Outcome {
@@ -33,16 +34,13 @@ object DeadlineVerdict {
         if (sessionRemainingMs > 0) return Outcome.Skip
         if (!interactive || keyguardLocked) return Outcome.Skip
         if (rootPkg == null) return anchorOutcome(lastEventPkg, ownPkg, userWhitelist)
-        if (!GatePolicy.isGated(rootPkg, ownPkg, emptySet(), userWhitelist)) {
-            // Transparent system surface (survival list): the real app sits
-            // behind the overlay, so decide by the sticky anchor. Our own UI
-            // as root means the block is already up: never re-launch. A real
-            // whitelisted use-surface (Anki) stays quiet instead.
-            if (rootPkg != ownPkg && rootPkg in GatePolicy.survivalPackages) {
-                return anchorOutcome(lastEventPkg, ownPkg, userWhitelist)
-            }
-            return Outcome.Skip
+        // Declared-transparent roots are looked through regardless of gating:
+        // decide by the sticky anchor (the app behind the overlay). Our own UI
+        // as root means the block is already up: never re-launch.
+        if (rootPkg != ownPkg && GatePolicy.isTransparent(rootPkg, transparentPkgs)) {
+            return anchorOutcome(lastEventPkg, ownPkg, userWhitelist)
         }
+        if (!GatePolicy.isGated(rootPkg, ownPkg, emptySet(), userWhitelist)) return Outcome.Skip
         return Outcome.Launch(rootPkg)
     }
 

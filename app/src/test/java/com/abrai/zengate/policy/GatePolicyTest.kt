@@ -23,6 +23,15 @@ class GatePolicyTest {
     }
 
     @Test
+    fun `transparency covers survival plus the user set`() {
+        val custom = setOf("com.example.overlay")
+        assertTrue(GatePolicy.isTransparent("eu.toneiv.ubktouch", emptySet()))
+        assertTrue(GatePolicy.isTransparent("com.example.overlay", custom))
+        assertFalse(GatePolicy.isTransparent("com.ichi2.anki", custom))
+        assertFalse(GatePolicy.isTransparent("com.instagram.android", custom))
+    }
+
+    @Test
     fun `gated apps are gated`() {
         assertTrue(GatePolicy.isGated("com.instagram.android", own))
         assertTrue(GatePolicy.isGated("app.olauncher", own))

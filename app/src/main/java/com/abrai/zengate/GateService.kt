@@ -58,6 +58,9 @@ class GateService : Service() {
         )
         startForeground(NOTIFICATION_ID, buildNotification(true), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         scope.launch {
+            store.transparent.collect { GateState.transparentPkgs = it }
+        }
+        scope.launch {
             combine(
                 store.enabled,
                 store.snapshot,
@@ -387,6 +390,7 @@ class GateService : Service() {
                             remaining,
                             packageName,
                             list,
+                            GateState.transparentPkgs,
                             keys.isKeyguardLocked,
                             power.isInteractive,
                             usageFg,

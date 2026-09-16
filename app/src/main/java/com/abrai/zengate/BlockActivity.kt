@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +17,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -26,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -47,7 +51,17 @@ class BlockActivity : ComponentActivity() {
         // Swallow Back: the wait is the only way through (kill switch lives in the shade).
         onBackPressedDispatcher.addCallback(this, AlwaysEnabledCallback())
         setContent {
-            MaterialTheme {
+            val context = LocalContext.current
+            // Dynamic (Material You) scheme for controls, but no themed Surface:
+            // the block itself stays black (sensory-deprivation, AMOLED). The
+            // button then follows the system accent instead of fixed purple.
+            val scheme =
+                if (isSystemInDarkTheme()) {
+                    dynamicDarkColorScheme(context)
+                } else {
+                    dynamicLightColorScheme(context)
+                }
+            MaterialTheme(colorScheme = scheme) {
                 val scope = rememberCoroutineScope()
                 val waitSec = intent.getIntExtra(EXTRA_WAIT_SEC, WAIT_SEC).coerceAtLeast(1)
                 // resetTick is snapshot state: bumping it recomposes with a fresh countdown.
@@ -173,6 +187,18 @@ class BlockActivity : ComponentActivity() {
         // Snapshot state (not @Volatile): bumping recomposes the countdown.
         val resetTick = mutableIntStateOf(0)
 
+        /** Open-button label in words: seconds, minutes, or both. Pure. */
+        fun openLabel(sessionAllowSec: Long): String {
+            val minutes = sessionAllowSec / 60
+            val seconds = sessionAllowSec % 60
+            val parts = ArrayList<String>(2)
+            if (minutes > 0) parts.add(if (minutes == 1L) "1 minute" else "$minutes minutes")
+            if (seconds > 0 || minutes == 0L) {
+                parts.add(if (seconds == 1L) "1 second" else "$seconds seconds")
+            }
+            return "Open for " + parts.joinToString(" ")
+        }
+
         private const val TAG = "ZenGate"
     }
 }
@@ -210,16 +236,12 @@ private fun blockScreen(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("ZEN GATE", color = Color.White, fontSize = 28.sp)
-        Spacer(Modifier.height(16.dp))
         Text(blockedPkg, color = Color.Gray, fontSize = 14.sp)
         Spacer(Modifier.height(32.dp))
         Text("$remaining", color = Color.White, fontSize = 72.sp)
         Spacer(Modifier.height(32.dp))
         Button(onClick = { onUnlock(blockedPkg) }, enabled = remaining == 0) {
-            Text(
-                "Open for ${GateState.config.sessionAllowSec / 60} minutes",
-            )
+            Text(BlockActivity.openLabel(GateState.config.sessionAllowSec))
         }
     }
 }

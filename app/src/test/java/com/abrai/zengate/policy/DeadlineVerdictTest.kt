@@ -25,7 +25,7 @@ class DeadlineVerdictTest {
                 enabled = true,
                 sessionRemainingMs = 0,
                 rootPkg = launcher,
-                fallbackPkg = launcher,
+                lastEventPkg = launcher,
                 ownPkg = own,
                 userWhitelist = whitelist,
                 keyguardLocked = false,
@@ -44,7 +44,7 @@ class DeadlineVerdictTest {
                 enabled = true,
                 sessionRemainingMs = 0,
                 rootPkg = "com.ichi2.anki",
-                fallbackPkg = launcher,
+                lastEventPkg = launcher,
                 ownPkg = own,
                 userWhitelist = whitelist,
                 keyguardLocked = false,
@@ -63,7 +63,7 @@ class DeadlineVerdictTest {
                 enabled = true,
                 sessionRemainingMs = 0,
                 rootPkg = own,
-                fallbackPkg = launcher,
+                lastEventPkg = launcher,
                 ownPkg = own,
                 userWhitelist = whitelist,
                 keyguardLocked = false,
@@ -73,14 +73,50 @@ class DeadlineVerdictTest {
     }
 
     @Test
-    fun `no window with screen on launches for the fallback anchor`() {
+    fun `no window with sticky home event launches for the anchor`() {
         assertEquals(
             Launch(launcher),
             DeadlineVerdict.decide(
                 enabled = true,
                 sessionRemainingMs = 0,
                 rootPkg = null,
-                fallbackPkg = launcher,
+                lastEventPkg = launcher,
+                ownPkg = own,
+                userWhitelist = whitelist,
+                keyguardLocked = false,
+                interactive = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `no window with sticky whitelisted event stays quiet`() {
+        // Stale-Anki strand guard: the sticky event is whitelisted, so the
+        // deadline must not launch; the app exit re-gates via the entry path.
+        assertEquals(
+            Skip,
+            DeadlineVerdict.decide(
+                enabled = true,
+                sessionRemainingMs = 0,
+                rootPkg = null,
+                lastEventPkg = "com.ichi2.anki",
+                ownPkg = own,
+                userWhitelist = whitelist,
+                keyguardLocked = false,
+                interactive = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `no window with nothing known stays quiet`() {
+        assertEquals(
+            Skip,
+            DeadlineVerdict.decide(
+                enabled = true,
+                sessionRemainingMs = 0,
+                rootPkg = null,
+                lastEventPkg = null,
                 ownPkg = own,
                 userWhitelist = whitelist,
                 keyguardLocked = false,
@@ -97,7 +133,7 @@ class DeadlineVerdictTest {
                 enabled = true,
                 sessionRemainingMs = 0,
                 rootPkg = null,
-                fallbackPkg = launcher,
+                lastEventPkg = launcher,
                 ownPkg = own,
                 userWhitelist = whitelist,
                 keyguardLocked = true,
@@ -110,7 +146,7 @@ class DeadlineVerdictTest {
                 enabled = true,
                 sessionRemainingMs = 0,
                 rootPkg = launcher,
-                fallbackPkg = launcher,
+                lastEventPkg = launcher,
                 ownPkg = own,
                 userWhitelist = whitelist,
                 keyguardLocked = false,
@@ -126,7 +162,7 @@ class DeadlineVerdictTest {
                 enabled = true,
                 sessionRemainingMs = 30_000,
                 rootPkg = launcher,
-                fallbackPkg = launcher,
+                lastEventPkg = launcher,
                 ownPkg = own,
                 userWhitelist = whitelist,
                 keyguardLocked = false,
@@ -138,7 +174,7 @@ class DeadlineVerdictTest {
                 enabled = false,
                 sessionRemainingMs = 0,
                 rootPkg = launcher,
-                fallbackPkg = launcher,
+                lastEventPkg = launcher,
                 ownPkg = own,
                 userWhitelist = whitelist,
                 keyguardLocked = false,

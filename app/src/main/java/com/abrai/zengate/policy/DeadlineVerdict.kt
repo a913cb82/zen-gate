@@ -22,8 +22,8 @@ object DeadlineVerdict {
         sessionRemainingMs: Long,
         /** Live active-window root package; null when none is visible. */
         rootPkg: String?,
-        /** Last gated surface; anchor when no window is visible. */
-        fallbackPkg: String?,
+        /** Last real surface (sticky, never nulled); anchors the no-window case. */
+        lastEventPkg: String?,
         ownPkg: String,
         userWhitelist: Set<String>,
         keyguardLocked: Boolean,
@@ -33,10 +33,17 @@ object DeadlineVerdict {
         if (sessionRemainingMs > 0) return Outcome.Skip
         if (!interactive || keyguardLocked) return Outcome.Skip
         if (rootPkg == null) {
-            // No visible window on a lit, unlocked screen (reveal race): anchor
-            // at the last gated surface; the label may be stale but the wait is
-            // real and the next event re-gates precisely.
-            return if (!fallbackPkg.isNullOrEmpty()) Outcome.Launch(fallbackPkg) else Outcome.Skip
+            // No usage transitions on a lit screen (static surface, blind a11y
+            // root): the sticky last real surface decides. Gated -> launch
+            // (static home/app); whitelisted/transient/unknown -> stay quiet
+            // (the app exit re-gates via the entry path).
+            return if (lastEventPkg != null &&
+                GatePolicy.isGated(lastEventPkg, ownPkg, emptySet(), userWhitelist)
+            ) {
+                Outcome.Launch(lastEventPkg)
+            } else {
+                Outcome.Skip
+            }
         }
         if (!GatePolicy.isGated(rootPkg, ownPkg, emptySet(), userWhitelist)) return Outcome.Skip
         return Outcome.Launch(rootPkg)

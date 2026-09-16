@@ -64,9 +64,14 @@ Tree state at wrap-up:
 - Background build verdict (arrived after wrap-up): EXIT=0, BUILD SUCCESSFUL —
   the toggle (incl. transparency-before-gating fix) is GREEN. Pending: install.
 
-TODO on resume:
-1. Install + screenshot picker (verify glyph) + tap-toggle test.
-2. Install + screenshot picker (verify glyph renders) + tap-toggle test.
-3. User acceptance: gesture-over-Instagram blocks on time.
-4. #3 ignore-window: keep collecting unlock→event gaps from routine pulls.
-5. #8 reboot acceptance on a natural reboot.
+TODO on resume (in order):
+1. Install the green toggle build (`ae4b6fd`, EXIT=0 verified).
+2. Screenshot the picker (verify the layers glyph renders) + tap the toggle
+   on/off on one app; confirm the tint flips primary/faint.
+3. User acceptance, one round: gesture-over-Instagram blocks on time;
+   Anki long-stay still never pops; lockscreen torch/camera still free.
+4. #3 ignore-window: keep appending unlock→first-event gaps from routine
+   log pulls (1 sample: 1s); decide fixed-vs-adaptive at p99.
+5. #8 reboot acceptance on a natural reboot (never spontaneous).
+6. #6 code exit: once the toggle proves itself in daily use, remove the
+   now-redundant ubktouch/plugin survival entries (keep telecom/safety).

@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -28,6 +29,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -271,14 +273,25 @@ private fun blockScreen(
         Spacer(Modifier.height(32.dp))
         Text("$remaining", color = Color.White, fontSize = 72.sp)
         Spacer(Modifier.height(32.dp))
-        if (quickWaitSec > 0) {
-            Button(onClick = { onQuick(blockedPkg) }, enabled = quickRemaining == 0) {
-                Text(if (quickRemaining > 0) "$quickRemaining s" else quickLabel)
-            }
-            Spacer(Modifier.height(16.dp))
-        }
         Button(onClick = { onUnlock(blockedPkg) }, enabled = remaining == 0) {
             Text(BlockActivity.openLabel(GateState.config.sessionAllowSec))
+        }
+        // Quick open sits below the session button: smaller and fainter so the
+        // session stays the primary action (faint in both states, not just when
+        // disabled).
+        if (quickWaitSec > 0) {
+            Spacer(Modifier.height(16.dp))
+            Button(
+                onClick = { onQuick(blockedPkg) },
+                enabled = quickRemaining == 0,
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                modifier = Modifier.alpha(0.55f),
+            ) {
+                Text(
+                    if (quickRemaining > 0) "$quickRemaining s" else quickLabel,
+                    fontSize = 12.sp,
+                )
+            }
         }
     }
 }

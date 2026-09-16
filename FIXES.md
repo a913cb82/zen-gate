@@ -61,11 +61,11 @@ Tree state at wrap-up:
   (desktop artifact); reverted to zero-dep hand-drawn layers glyph in MainActivity.
 - Combine 6-flow overload doesn't exist in coroutines 1.11: mirror uses a
   separate `store.transparent` collector instead.
-- GateService background build (ktlint+tests+assemble+lint) was still running
-  at wrap-up — see /tmp/gate.log for its verdict.
+- Background build verdict (arrived after wrap-up): EXIT=0, BUILD SUCCESSFUL —
+  the toggle (incl. transparency-before-gating fix) is GREEN. Pending: install.
 
 TODO on resume:
-1. Check /tmp/gate.log (or rerun full gate); fix any remainder.
+1. Install + screenshot picker (verify glyph) + tap-toggle test.
 2. Install + screenshot picker (verify glyph renders) + tap-toggle test.
 3. User acceptance: gesture-over-Instagram blocks on time.
 4. #3 ignore-window: keep collecting unlock→event gaps from routine pulls.

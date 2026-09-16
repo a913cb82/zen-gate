@@ -162,8 +162,19 @@ class GateService : Service() {
         }
     }
 
+    private var lastCacheRefreshMs: Long = 0L
+
     private fun onPhoneUnlock() {
         if (!GateState.storeLoaded) return
+        // New keyboards/launchers install while we look away: force the package
+        // caches to re-resolve (throttled), so fresh surfaces classify correctly.
+        val now = SystemClock.elapsedRealtime()
+        if (com.abrai.zengate.policy.GatePolicy
+                .refreshDue(now, lastCacheRefreshMs, force = true)
+        ) {
+            lastCacheRefreshMs = now
+            ZenGateService.instance?.dropPackageCaches()
+        }
         scope.launch {
             val snap = GateState.poolState()
             val cur = PoolEngine.phoneUnlock(snap, System.currentTimeMillis(), GateState.config)
@@ -364,7 +375,11 @@ class GateService : Service() {
                 val remaining = PoolEngine.sessionRemainingMs(snap, wall, cfg)
                 val usageFg =
                     com.abrai.zengate.policy.UsageOracle
-                        .queryForeground(this@GateService)
+                        .queryForeground(
+                            this@GateService,
+                            com.abrai.zengate.policy.UsageOracle
+                                .windowMs(snap.poolSec),
+                        )
                 when (
                     val v =
                         ZenGateService.decideDeadline(

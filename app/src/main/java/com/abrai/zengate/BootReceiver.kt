@@ -27,13 +27,19 @@ class BootReceiver : BroadcastReceiver() {
     companion object {
         private const val TAG = "ZenGate"
         private const val REQUEST_CODE = 1
-        private const val DELAY_MS = 60_000L
+        private const val REQUEST_CODE_BACKSTOP = 2
 
-        fun gateRestartIntent(context: Context): PendingIntent {
+        /** Boot restart backoff: one fast shot, one bounded backstop, then silent. */
+        fun restartDelaysMs(): List<Long> = listOf(60_000L, 180_000L)
+
+        fun gateRestartIntent(
+            context: Context,
+            requestCode: Int = REQUEST_CODE,
+        ): PendingIntent {
             val intent = Intent(context, SupervisorReceiver::class.java)
             return PendingIntent.getBroadcast(
                 context,
-                REQUEST_CODE,
+                requestCode,
                 intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
@@ -41,23 +47,29 @@ class BootReceiver : BroadcastReceiver() {
 
         fun scheduleGateRestart(context: Context) {
             val alarmManager = context.getSystemService(AlarmManager::class.java)
-            val triggerAt = SystemClock.elapsedRealtime() + DELAY_MS
-            val operation = gateRestartIntent(context)
-            if (alarmManager.canScheduleExactAlarms()) {
-                alarmManager.setExactAndAllowWhileIdle(
-                    AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                    triggerAt,
-                    operation,
-                )
-                Log.d(TAG, "exact gate-restart alarm set")
-            } else {
-                alarmManager.setAndAllowWhileIdle(
-                    AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                    triggerAt,
-                    operation,
-                )
-                Log.d(TAG, "inexact gate-restart alarm set (exact alarms not granted)")
+            val now = SystemClock.elapsedRealtime()
+            val exact = alarmManager.canScheduleExactAlarms()
+            // The SupervisorReceiver no-action branch restarts the FGS idempotently,
+            // so a second alarm is a pure backstop, never a duplicate gate.
+            val codes = listOf(REQUEST_CODE, REQUEST_CODE_BACKSTOP)
+            for ((i, delay) in restartDelaysMs().withIndex()) {
+                val operation = gateRestartIntent(context, codes[i])
+                val triggerAt = now + delay
+                if (exact) {
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                        triggerAt,
+                        operation,
+                    )
+                } else {
+                    alarmManager.setAndAllowWhileIdle(
+                        AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                        triggerAt,
+                        operation,
+                    )
+                }
             }
+            Log.d(TAG, "gate-restart alarms set exact=$exact")
         }
     }
 }

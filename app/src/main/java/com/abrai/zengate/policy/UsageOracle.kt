@@ -35,6 +35,16 @@ object UsageOracle {
         return fg
     }
 
+    /**
+     * Query window for the live pool: short floor so stale roots age out fast
+     * and the whitelist-aware sticky anchor decides instead; pool-scaled above
+     * that so long drains keep their tail.
+     */
+    fun windowMs(
+        poolSec: Long,
+        marginMs: Long = 5_000,
+    ): Long = (poolSec * 1_000 + marginMs).coerceAtLeast(8_000)
+
     /** Windowed query: who is foreground right now, null when unknowable. */
     fun queryForeground(
         context: Context,

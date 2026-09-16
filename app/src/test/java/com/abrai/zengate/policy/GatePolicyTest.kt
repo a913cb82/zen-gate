@@ -8,6 +8,21 @@ class GatePolicyTest {
     private val own = "com.abrai.zengate"
 
     @Test
+    fun `locked out exactly when dark or keyguard up`() {
+        assertTrue(GatePolicy.isLockedOut(interactive = false, keyguardLocked = false))
+        assertTrue(GatePolicy.isLockedOut(interactive = false, keyguardLocked = true))
+        assertTrue(GatePolicy.isLockedOut(interactive = true, keyguardLocked = true))
+        assertFalse(GatePolicy.isLockedOut(interactive = true, keyguardLocked = false))
+    }
+
+    @Test
+    fun `cache refresh due on force past throttle, or never forced`() {
+        assertTrue(GatePolicy.refreshDue(nowMs = 10_000, lastForcedMs = 0, force = true))
+        assertFalse(GatePolicy.refreshDue(nowMs = 12_000, lastForcedMs = 10_000, force = true))
+        assertFalse(GatePolicy.refreshDue(nowMs = 99_000, lastForcedMs = 0, force = false))
+    }
+
+    @Test
     fun `gated apps are gated`() {
         assertTrue(GatePolicy.isGated("com.instagram.android", own))
         assertTrue(GatePolicy.isGated("app.olauncher", own))

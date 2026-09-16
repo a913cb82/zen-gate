@@ -20,6 +20,28 @@ object GatePolicy {
             "miui.systemui.plugin",
         )
 
+    /**
+     * Locked-or-dark suppression: the gate never applies while the keyguard is
+     * up or the screen is off (lockscreen camera/torch/secure surfaces).
+     * Single named seam so ROM keyguard nuances stay swappable + testable.
+     */
+    fun isLockedOut(
+        interactive: Boolean,
+        keyguardLocked: Boolean,
+    ): Boolean = !interactive || keyguardLocked
+
+    /**
+     * Forced package-cache refresh (new keyboard/launcher installs) with
+     * throttle: a force past the throttle wins; unforced never does here
+     * (TTL staleness stays inside the resolvers).
+     */
+    fun refreshDue(
+        nowMs: Long,
+        lastForcedMs: Long,
+        force: Boolean,
+        throttleMs: Long = 5_000,
+    ): Boolean = force && nowMs - lastForcedMs > throttleMs
+
     fun isGated(
         foregroundPackage: String,
         ownPackage: String,

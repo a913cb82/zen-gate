@@ -61,6 +61,12 @@ object SetupChecks {
                 "Settings → Apps → Zen Gate → Autostart → allow. Needed for reboot survival.",
             ),
             SetupCheck(
+                "noforce",
+                "Never force-stop",
+                CheckStatus.MANUAL,
+                "Force-stop drops the accessibility binding until the next unlock; use the kill switch instead.",
+            ),
+            SetupCheck(
                 ID_NOTIFICATIONS,
                 "Notifications",
                 auto(hasNotifications(context)),

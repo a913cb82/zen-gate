@@ -7,6 +7,16 @@ import org.junit.Test
 /** Headless pin of the usage-events foreground fold (Android query is a thin wrapper). */
 class UsageOracleTest {
     @Test
+    fun `oracle window is short by default, pool-scaled above that`() {
+        // Small floor: stale roots must age out fast so the sticky anchor
+        // (whitelist-aware) decides instead. A bigger live pool widens it.
+        assertEquals(8_000, UsageOracle.windowMs(poolSec = 0))
+        assertEquals(8_000, UsageOracle.windowMs(poolSec = 3))
+        assertEquals(25_000, UsageOracle.windowMs(poolSec = 20))
+        assertEquals(65_000, UsageOracle.windowMs(poolSec = 60))
+    }
+
+    @Test
     fun `static whitelisted app stays foreground`() {
         assertEquals(
             "com.ichi2.anki",

@@ -62,9 +62,10 @@ class ZenGateService : AccessibilityService() {
         // Locked or dark: the gate does not apply (lockscreen camera/torch,
         // secure surfaces). Touch nothing so the post-unlock truth comes from
         // onPhoneUnlock plus fresh events.
-        if (!powerManager.isInteractive || keyguardManager.isKeyguardLocked) return
+        if (GatePolicy.isLockedOut(powerManager.isInteractive, keyguardManager.isKeyguardLocked)) return
         try {
             val pkg = event.packageName?.toString().orEmpty()
+            probeWindowRole(pkg, event.windowId)
             val gated = GatePolicy.isGated(pkg, packageName, imePackages(), GateState.userWhitelist)
             // Only real surfaces anchor the status line and the no-window
             // verdict: transient system overlays (shade, unlock handoff,
@@ -277,6 +278,47 @@ class ZenGateService : AccessibilityService() {
             imeCacheAt = now
         }
         return cachedImes
+    }
+
+    private val windowKindCache = HashMap<String, Pair<com.abrai.zengate.policy.OverlayRole.Kind, Long>>()
+
+    /**
+     * STAGE1-PROBE — REMOVE IN STAGE 2. Joins the event's windowId to
+     * getWindows() to learn each package's window kind; logs only.
+     */
+    private fun probeWindowRole(
+        pkg: String,
+        windowId: Int,
+    ) {
+        try {
+            val match = windows.find { it.id == windowId }
+            val kind =
+                match?.let {
+                    when (it.type) {
+                        android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION ->
+                            com.abrai.zengate.policy.OverlayRole.Kind.APPLICATION
+                        android.view.accessibility.AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY ->
+                            com.abrai.zengate.policy.OverlayRole.Kind.ACCESSIBILITY_OVERLAY
+                        android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD ->
+                            com.abrai.zengate.policy.OverlayRole.Kind.INPUT_METHOD
+                        android.view.accessibility.AccessibilityWindowInfo.TYPE_SYSTEM ->
+                            com.abrai.zengate.policy.OverlayRole.Kind.SYSTEM
+                        else -> com.abrai.zengate.policy.OverlayRole.Kind.OTHER
+                    }
+                }
+            if (match != null && kind != null && pkg.isNotEmpty()) {
+                windowKindCache[pkg] = kind to SystemClock.elapsedRealtime()
+            }
+            Log.d(TAG, "WINPROBE pkg=$pkg winId=$windowId kind=$kind")
+        } catch (t: Throwable) {
+            Log.d(TAG, "WINPROBE failed (API blind here?)")
+        }
+    }
+
+    /** Drop the package caches (forced refresh after unlock: new keyboards/launchers). */
+    fun dropPackageCaches() {
+        cachedImes = emptySet()
+        cachedLaunchers = emptySet()
     }
 
     /** Home-screen packages: transit surfaces, resolved live (no hardcoding). */

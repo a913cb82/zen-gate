@@ -54,7 +54,9 @@ Alarm intents need care beyond the package entry: a firing alarm's fullscreen UI
   - `unlock_pool_sec` = 10 (free pool granted on unlock)
   - `base_wait_sec` = 30 (block wait before first unlock)
   - `wait_increment_sec` = 10 (added per unlock today)
+  - `quick_wait_sec` = 5 (quick-open button countdown; 0 hides the button)
   - (removed: refill amount/interval/cap, session hard limit, reset-time customization)
+- Quick-open button above the main Open button: grants free time (`unlock_pool_sec`, always matches), no session, does not count towards unlocks.
 
 ## 4. Detection — AccessibilityService (primary)
 

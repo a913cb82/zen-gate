@@ -72,32 +72,39 @@ class BlockActivity : ComponentActivity() {
                     blockedPkg = currentPkg.ifEmpty { intent.getStringExtra(EXTRA_PACKAGE).orEmpty() },
                     waitSec = waitSec,
                     resetKey = resetKey,
+                    quickWaitSec =
+                        GateState.config.quickWaitSec
+                            .toInt()
+                            .coerceAtLeast(0),
+                    quickLabel = BlockActivity.openLabel(GateState.config.unlockPoolSec),
                     onStale = { finish() },
+                    onQuick = { pkg ->
+                        scope.launch {
+                            val wall = System.currentTimeMillis()
+                            val store = GateStore(this@BlockActivity)
+                            val cfg = GateState.config
+                            val granted =
+                                com.abrai.zengate.policy.PoolEngine
+                                    .phoneUnlock(rolledBase(wall, cfg), wall, cfg)
+                            store.savePool(granted)
+                            GateState.applyPool(granted)
+                            GateState.drainEnterElapsedMs = SystemClock.elapsedRealtime()
+                            GateAlarms.schedulePoolExpiry(this@BlockActivity, granted.poolSec * 1_000)
+                            Log.d(TAG, "quick unlock pkg=$pkg usages=${granted.usagesToday} pool=${granted.poolSec}")
+                            GateState.ignorePkg = pkg
+                            GateState.ignoreUntilElapsedMs = SystemClock.elapsedRealtime() + IGNORE_MS
+                            launchBlocked(pkg)
+                            finish()
+                        }
+                    },
                     onUnlock = { pkg ->
                         scope.launch {
                             val wall = System.currentTimeMillis()
                             val store = GateStore(this@BlockActivity)
                             val cfg = GateState.config
-                            val today =
-                                com.abrai.zengate.policy.PoolEngine.dayIdFor(
-                                    wall,
-                                    cfg.resetHour,
-                                    cfg.resetMinute,
-                                )
-                            val base =
-                                GateState.poolState().let {
-                                    if (com.abrai.zengate.policy.PoolEngine
-                                            .needsMidnightReset(it, today)
-                                    ) {
-                                        com.abrai.zengate.policy.PoolEngine
-                                            .midnightReset(today, wall, cfg)
-                                    } else {
-                                        it
-                                    }
-                                }
                             val unlocked =
                                 com.abrai.zengate.policy.PoolEngine
-                                    .unlock(base, wall, cfg)
+                                    .unlock(rolledBase(wall, cfg), wall, cfg)
                             store.savePool(unlocked)
                             GateState.applyPool(unlocked)
                             Log.d(TAG, "unlock pkg=$pkg usages=${unlocked.usagesToday} pool=${unlocked.poolSec}")
@@ -156,6 +163,25 @@ class BlockActivity : ComponentActivity() {
         }
     }
 
+    /** Pool with midnight rollover applied; shared by both unlock taps. */
+    private fun rolledBase(
+        wall: Long,
+        cfg: com.abrai.zengate.policy.ZenConfig,
+    ): com.abrai.zengate.policy.PoolState {
+        val base = GateState.poolState()
+        val today =
+            com.abrai.zengate.policy.PoolEngine
+                .dayIdFor(wall, cfg.resetHour, cfg.resetMinute)
+        return if (com.abrai.zengate.policy.PoolEngine
+                .needsMidnightReset(base, today)
+        ) {
+            com.abrai.zengate.policy.PoolEngine
+                .midnightReset(today, wall, cfg)
+        } else {
+            base
+        }
+    }
+
     private fun launchBlocked(pkg: String) {
         val launch =
             packageManager.getLaunchIntentForPackage(pkg)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -208,10 +234,14 @@ private fun blockScreen(
     blockedPkg: String,
     waitSec: Int,
     resetKey: String,
+    quickWaitSec: Int,
+    quickLabel: String,
     onStale: () -> Unit,
+    onQuick: (String) -> Unit,
     onUnlock: (String) -> Unit,
 ) {
     var remaining by remember(resetKey) { mutableIntStateOf(waitSec) }
+    var quickRemaining by remember(resetKey) { mutableIntStateOf(quickWaitSec) }
     // Stale-block watcher: runs for the whole composition (the countdown above
     // exits once the wait completes, but a later unlock must still dismiss).
     LaunchedEffect(Unit) {
@@ -225,9 +255,10 @@ private fun blockScreen(
         }
     }
     LaunchedEffect(resetKey) {
-        while (remaining > 0) {
+        while (remaining > 0 || quickRemaining > 0) {
             delay(1_000)
-            remaining--
+            if (remaining > 0) remaining--
+            if (quickRemaining > 0) quickRemaining--
         }
         Log.d("ZenGate", "wait complete pkg=$blockedPkg")
     }
@@ -240,6 +271,12 @@ private fun blockScreen(
         Spacer(Modifier.height(32.dp))
         Text("$remaining", color = Color.White, fontSize = 72.sp)
         Spacer(Modifier.height(32.dp))
+        if (quickWaitSec > 0) {
+            Button(onClick = { onQuick(blockedPkg) }, enabled = quickRemaining == 0) {
+                Text(if (quickRemaining > 0) "$quickRemaining s" else quickLabel)
+            }
+            Spacer(Modifier.height(16.dp))
+        }
         Button(onClick = { onUnlock(blockedPkg) }, enabled = remaining == 0) {
             Text(BlockActivity.openLabel(GateState.config.sessionAllowSec))
         }

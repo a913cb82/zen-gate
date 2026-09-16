@@ -10,6 +10,8 @@ data class ZenConfig(
     val baseWaitSec: Long = 30,
     val waitIncrementSec: Long = 10,
     val sessionAllowSec: Long = 300,
+    /** Quick-open button countdown; 0 hides the button. */
+    val quickWaitSec: Long = 5,
     val resetHour: Int = 0,
     val resetMinute: Int = 0,
 )

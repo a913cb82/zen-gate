@@ -26,6 +26,7 @@ object GateStoreKeys {
     val WHITELIST = stringSetPreferencesKey("whitelist")
     val SEED_VERSION = intPreferencesKey("seed_version")
     val K_SESSION_ALLOW = longPreferencesKey("k_session_allow")
+    val K_QUICK_WAIT = longPreferencesKey("k_quick_wait")
     val K_UNLOCK_POOL = longPreferencesKey("k_unlock_pool")
     val K_BASE_WAIT = longPreferencesKey("k_base_wait")
     val K_WAIT_INC = longPreferencesKey("k_wait_inc")
@@ -80,6 +81,7 @@ class GateStore(
                 baseWaitSec = it[GateStoreKeys.K_BASE_WAIT] ?: defaults.baseWaitSec,
                 waitIncrementSec = it[GateStoreKeys.K_WAIT_INC] ?: defaults.waitIncrementSec,
                 sessionAllowSec = it[GateStoreKeys.K_SESSION_ALLOW] ?: defaults.sessionAllowSec,
+                quickWaitSec = it[GateStoreKeys.K_QUICK_WAIT] ?: defaults.quickWaitSec,
                 resetHour = it[GateStoreKeys.K_RESET_HOUR] ?: defaults.resetHour,
                 resetMinute = it[GateStoreKeys.K_RESET_MINUTE] ?: defaults.resetMinute,
             )

@@ -6,6 +6,11 @@ import org.junit.Test
 /** Block-screen Open button label follows the session knob in words. */
 class BlockLabelTest {
     @Test
+    fun `quick-open label matches free time`() {
+        assertEquals("Open for 15 seconds", BlockActivity.openLabel(15))
+    }
+
+    @Test
     fun `sub-minute sessions read in seconds`() {
         assertEquals("Open for 30 seconds", BlockActivity.openLabel(30))
         assertEquals("Open for 1 second", BlockActivity.openLabel(1))

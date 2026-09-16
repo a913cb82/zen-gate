@@ -284,6 +284,9 @@ private fun knobsScreen(
                 knobField("Wait increment", cfg.waitIncrementSec) {
                     scope.launch { store.setKnob(GateStoreKeys.K_WAIT_INC, it) }
                 }
+                knobField("Quick-open wait (0 hides)", cfg.quickWaitSec) {
+                    scope.launch { store.setKnob(GateStoreKeys.K_QUICK_WAIT, it) }
+                }
             }
         }
     }

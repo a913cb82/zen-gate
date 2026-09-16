@@ -26,6 +26,20 @@ class PoolEngineTest {
     }
 
     @Test
+    fun `quick open grants pool without counting an unlock`() {
+        // Quick-open button: free time, no session, no usage increment.
+        val out = PoolEngine.phoneUnlock(PoolState(poolSec = 0, usagesToday = 2), t0, cfg)
+        assertEquals(2, out.usagesToday)
+        assertEquals(10, out.poolSec)
+        assertEquals(0, out.sessionExpiryWallMs)
+    }
+
+    @Test
+    fun `quick-open wait defaults to five seconds`() {
+        assertEquals(5, ZenConfig().quickWaitSec)
+    }
+
+    @Test
     fun `phone unlock outside session grants grace pool`() {
         val out = PoolEngine.phoneUnlock(PoolState(poolSec = 0, usagesToday = 2), t0, cfg)
         assertEquals(10, out.poolSec)

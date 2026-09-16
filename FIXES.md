@@ -19,7 +19,7 @@ Install streaming/Protect waits are reported separately, not charged here.
 | 1 | Oracle window ↔ pool coupling | DONE: `windowMs` floor 8s + pool-scaled, wired in `onDeadline` | TODO log pull | Anki in-and-out blocks on time |
 | 2 | Cache TTL invalidation | DONE: `refreshDue` + unlock-forced `dropPackageCaches` (throttled) | deferred to next keyboard/launcher change | refresh in unlock logs |
 | 3 | Ignore-window sizing | TODO log analysis (needs pull first) | TODO 15s log pull | data closes it or adaptive design |
-| 4 | Transparency generalization | Stage 1 DONE: pure `OverlayRole` + `WINPROBE` join logging + `flagRetrieveInteractiveWindows`; behavior UNCHANGED (probe only) | passive log observation, gesture round if inconclusive | `WINPROBE kind=ACCESSIBILITY_OVERLAY` for ubktouch |
+| 4 | Transparency generalization | Stage 1 KILLED (see log): pure `OverlayRole` + `WINPROBE` join logging + `flagRetrieveInteractiveWindows`; behavior UNCHANGED (probe only) | passive log observation, gesture round if inconclusive | `WINPROBE kind=ACCESSIBILITY_OVERLAY` for ubktouch |
 | 5 | Test literals own-pkg | CLOSED infeasible: AGP9 generates no app BuildConfig for unit tests; literals are test-only, zero runtime risk | — | — |
 | 6 | Survival device entries | docs done; code exit = Stage-2 criterion | — | list shrinks |
 | 7 | Seed whitelist | closed (correct-by-construction) | — | — |
@@ -39,3 +39,10 @@ Install streaming/Protect waits are reported separately, not charged here.
   #5 closed infeasible. #3 pending log pull. #6/#7 closed by docs. Mid-fix notes:
   event `windowId` exists (join seam compiles); per-window pkg attribution does
   NOT (no packageName on window info) — probe joins event-winId → window type.
+
+- STAGE-1 VERDICT: `getWindows()` returns **empty** on HyperOS even with
+  `flagRetrieveInteractiveWindows` (census={} across samples, 2 processes) —
+  same blindness class as getRootInActiveWindow. Probe, seam, tests and flag
+  all removed (tree clean, suite back to baseline+Wave-A). Transparency goes
+  the declared route (per-app toggle, proposal pending approval), not the
+  detected route.

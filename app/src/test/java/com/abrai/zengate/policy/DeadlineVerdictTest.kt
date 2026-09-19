@@ -146,6 +146,25 @@ class DeadlineVerdictTest {
     }
 
     @Test
+    fun `no window with sticky own-package event stays quiet`() {
+        // Settings browsing anchors self, so a blind deadline stays quiet;
+        // the app exit re-gates via the entry path.
+        assertEquals(
+            Skip,
+            DeadlineVerdict.decide(
+                enabled = true,
+                sessionRemainingMs = 0,
+                rootPkg = null,
+                lastEventPkg = own,
+                ownPkg = own,
+                userWhitelist = whitelist,
+                keyguardLocked = false,
+                interactive = true,
+            ),
+        )
+    }
+
+    @Test
     fun `live clock root with stale launcher anchor stays quiet`() {
         // Whitelisted deskclock is a real app, not an overlay: the live root
         // decides Skip even when the sticky anchor is still the launcher.

@@ -72,10 +72,12 @@ object GatePolicy {
      * Sticky-anchor decision for the window-event path: only real surfaces
      * anchor the status line and the no-window verdict. Transparent overlays
      * never anchor — not even gated ones the user marked transparent (the
-     * look-through would be void otherwise). Gated apps anchor; whitelisted
-     * apps and real survival surfaces (deskclock/telecom) anchor when not
-     * transparent; IMEs, our own UI and empties never do (else every swipe
-     * flaps the verdict and a whitelisted transient reads as free use).
+     * look-through would be void otherwise). Gated apps anchor; our own UI,
+     * whitelisted apps and real survival surfaces (deskclock/telecom) anchor
+     * when not transparent (settings browsing must move the anchor, or a
+     * blind deadline fires for the stale gated app behind it); IMEs and
+     * empties never do (else every swipe flaps the verdict and a whitelisted
+     * transient reads as free use).
      */
     fun shouldAnchor(
         pkg: String,
@@ -85,9 +87,10 @@ object GatePolicy {
         transparentPkgs: Set<String> = emptySet(),
     ): Boolean {
         if (pkg.isEmpty()) return false
-        if (pkg == ownPackage || pkg in extraIgnored) return false
+        if (pkg in extraIgnored) return false
         if (isTransparent(pkg, transparentPkgs)) return false
         return isGated(pkg, ownPackage, extraIgnored, userWhitelist) ||
+            pkg == ownPackage ||
             pkg in userWhitelist ||
             pkg in survivalPackages
     }

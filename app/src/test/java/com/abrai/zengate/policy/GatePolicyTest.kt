@@ -89,7 +89,14 @@ class GatePolicyTest {
     }
 
     @Test
-    fun `anchor excludes overlays, own package, imes, and empties`() {
+    fun `own package anchors like a real surface`() {
+        // Settings browsing must move the sticky anchor, or a blind deadline
+        // fires for the stale gated app behind it (the Clock shape, self-hosted).
+        assertTrue(GatePolicy.shouldAnchor(own, own))
+    }
+
+    @Test
+    fun `anchor excludes overlays, imes, and empties`() {
         val imes = setOf("com.google.android.inputmethod.latin")
         val seeded = setOf("eu.toneiv.ubktouch", "miui.systemui.plugin")
         assertFalse(GatePolicy.shouldAnchor("eu.toneiv.ubktouch", own, emptySet(), emptySet(), seeded))
@@ -105,7 +112,6 @@ class GatePolicyTest {
                 setOf("com.ichi2.anki"),
             ),
         )
-        assertFalse(GatePolicy.shouldAnchor(own, own))
         assertFalse(GatePolicy.shouldAnchor("com.google.android.inputmethod.latin", own, imes))
         assertFalse(GatePolicy.shouldAnchor("", own))
     }

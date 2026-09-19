@@ -72,12 +72,14 @@ class ZenGateService : AccessibilityService() {
                 GateState.lastEventPkg.value = pkg
             }
             Log.d(TAG, "foreground=$pkg gated=$gated")
-            if (!gated) {
+            // Transparent overlays (shade, gesture handoffs, user-declared)
+            // are looked through even when gated: keep the last gated anchor
+            // so they can't blind the gate, and never route to it. Real
+            // non-gated surfaces reset the anchor.
+            val lookThrough = GatePolicy.isTransparent(pkg, GateState.transparentPkgs)
+            if (!gated || lookThrough) {
                 settleDrain(keepDraining = true)
-                // Transparent overlays (shade, gesture handoffs, user-declared)
-                // are looked through: keep the last gated anchor so they can't
-                // blind the gate. Real non-gated surfaces reset it.
-                if (!GatePolicy.isTransparent(pkg, GateState.transparentPkgs)) {
+                if (!lookThrough) {
                     GateState.lastGatedPkg = null
                 }
                 return

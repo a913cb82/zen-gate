@@ -92,6 +92,31 @@ object GatePolicy {
             pkg in survivalPackages
     }
 
+    /** Entry routing: gated real surfaces go to the gate; everything else
+     * (whitelisted, survival, transparent overlays) passes through. A
+     * transparent overlay is looked through even when it reads as gated —
+     * the app behind it owns the drain and the verdict. */
+    sealed interface EntryRoute {
+        data object Gate : EntryRoute
+
+        data object Pass : EntryRoute
+    }
+
+    fun routeEntry(
+        pkg: String,
+        ownPackage: String,
+        extraIgnored: Set<String> = emptySet(),
+        userWhitelist: Set<String> = emptySet(),
+        transparentPkgs: Set<String> = emptySet(),
+    ): EntryRoute =
+        if (!isGated(pkg, ownPackage, extraIgnored, userWhitelist) ||
+            isTransparent(pkg, transparentPkgs)
+        ) {
+            EntryRoute.Pass
+        } else {
+            EntryRoute.Gate
+        }
+
     fun isSessionActive(
         nowMs: Long,
         sessionExpiryMs: Long,

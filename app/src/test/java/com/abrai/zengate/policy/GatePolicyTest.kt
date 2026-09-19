@@ -1,5 +1,6 @@
 package com.abrai.zengate.policy
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -42,6 +43,22 @@ class GatePolicyTest {
         val seeded = setOf("eu.toneiv.ubktouch", "miui.systemui.plugin")
         assertTrue(GatePolicy.isTransparent("eu.toneiv.ubktouch", seeded))
         assertTrue(GatePolicy.isTransparent("miui.systemui.plugin", seeded))
+    }
+
+    @Test
+    fun `entry routes transparent overlays as pass-through`() {
+        val seeded = setOf("eu.toneiv.ubktouch", "miui.systemui.plugin")
+        assertEquals(GatePolicy.EntryRoute.Pass, GatePolicy.routeEntry("miui.systemui.plugin", own, transparentPkgs = seeded))
+        assertEquals(GatePolicy.EntryRoute.Pass, GatePolicy.routeEntry("eu.toneiv.ubktouch", own, transparentPkgs = seeded))
+        assertEquals(GatePolicy.EntryRoute.Pass, GatePolicy.routeEntry("com.android.systemui", own))
+        assertEquals(
+            GatePolicy.EntryRoute.Pass,
+            GatePolicy.routeEntry("com.ichi2.anki", own, userWhitelist = setOf("com.ichi2.anki")),
+        )
+        assertEquals(GatePolicy.EntryRoute.Gate, GatePolicy.routeEntry("com.instagram.android", own))
+        assertEquals(GatePolicy.EntryRoute.Gate, GatePolicy.routeEntry("app.olauncher", own))
+        // Without the seed, exited overlays route to gate (seed contract).
+        assertEquals(GatePolicy.EntryRoute.Gate, GatePolicy.routeEntry("miui.systemui.plugin", own))
     }
 
     @Test

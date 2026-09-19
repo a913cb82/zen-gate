@@ -75,3 +75,23 @@ TODO on resume (in order):
 5. #8 reboot acceptance on a natural reboot (never spontaneous).
 6. #6 code exit: once the toggle proves itself in daily use, remove the
    now-redundant ubktouch/plugin survival entries (keep telecom/safety).
+
+## 2026-09-19: clock transparency fix + alarm-through observation (live, builds 80/81)
+
+- Clock bug: `isTransparent` covered all of `survivalPackages`, so deskclock
+  was looked through to the stale launcher anchor (deadline launched the
+  block over Clock). Fixed in `b0cc839`: look-through = overlays only
+  (systemui/ubktouch/plugin + user set); deskclock/telecom are never-gated
+  real surfaces. `a0920ec` adds the pure `shouldAnchor` seam (gated +
+  whitelisted-nontransparent + survival-nontransparent) so fresh installs
+  with no whitelist also fall back to Skip under Clock.
+- Proven on phone: grace expiring mid-Clock -> `deadline ... verdict=Skip`,
+  Clock usable; Clock->Instagram with pool 0 blocks instantly; feed PASS.
+- Item 5 observed, NO code change: unlocked firing = SystemUI heads-up
+  (Snooze/Stop above the opaque block, tappable, audio rings, gate logs
+  transparent-only); locked firing = fullscreen
+  `...deskclock.alarms.gastown.ui.GastownAlarmActivity` owning the screen,
+  gate idle (only `screen on`, zero verdicts). Known negligible gap: pool
+  erodes seconds while an alarm rings screen-on (no reliable ringing signal
+  exists — no deskclock window event unlocked; NEXT_ALARM_CLOCK_CHANGED
+  fires after). Wont-fix unless a clean signal appears.

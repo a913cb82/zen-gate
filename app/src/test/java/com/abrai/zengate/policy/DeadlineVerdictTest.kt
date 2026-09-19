@@ -146,6 +146,25 @@ class DeadlineVerdictTest {
     }
 
     @Test
+    fun `live clock root with stale launcher anchor stays quiet`() {
+        // Whitelisted deskclock is a real app, not an overlay: the live root
+        // decides Skip even when the sticky anchor is still the launcher.
+        assertEquals(
+            Skip,
+            DeadlineVerdict.decide(
+                enabled = true,
+                sessionRemainingMs = 0,
+                rootPkg = "com.google.android.deskclock",
+                lastEventPkg = launcher,
+                ownPkg = own,
+                userWhitelist = whitelist + "com.google.android.deskclock",
+                keyguardLocked = false,
+                interactive = true,
+            ),
+        )
+    }
+
+    @Test
     fun `no window with nothing known stays quiet`() {
         assertEquals(
             Skip,

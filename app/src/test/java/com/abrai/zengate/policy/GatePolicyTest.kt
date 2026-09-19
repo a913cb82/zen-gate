@@ -23,12 +23,24 @@ class GatePolicyTest {
     }
 
     @Test
-    fun `transparency covers survival plus the user set`() {
+    fun `transparency covers overlays only plus the user set`() {
         val custom = setOf("com.example.overlay")
         assertTrue(GatePolicy.isTransparent("eu.toneiv.ubktouch", emptySet()))
+        assertTrue(GatePolicy.isTransparent("com.android.systemui", emptySet()))
+        assertTrue(GatePolicy.isTransparent("miui.systemui.plugin", emptySet()))
         assertTrue(GatePolicy.isTransparent("com.example.overlay", custom))
         assertFalse(GatePolicy.isTransparent("com.ichi2.anki", custom))
         assertFalse(GatePolicy.isTransparent("com.instagram.android", custom))
+    }
+
+    @Test
+    fun `real survival surfaces are used, not transparent`() {
+        // deskclock/telecom are never gated but are real fullscreen apps:
+        // they must anchor and Skip like any whitelisted app.
+        assertFalse(GatePolicy.isTransparent("com.google.android.deskclock", emptySet()))
+        assertFalse(GatePolicy.isTransparent("com.android.server.telecom", emptySet()))
+        assertFalse(GatePolicy.isTransparent("com.android.incallui", emptySet()))
+        assertFalse(GatePolicy.isTransparent("com.android.emergency", emptySet()))
     }
 
     @Test

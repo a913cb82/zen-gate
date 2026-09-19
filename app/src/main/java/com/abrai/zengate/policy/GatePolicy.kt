@@ -43,14 +43,23 @@ object GatePolicy {
     ): Boolean = force && nowMs - lastForcedMs > throttleMs
 
     /**
-     * Transparent system chrome (survival list plus user-declared overlays):
-     * looked *through*, never anchored on. Whitelisted real apps are NOT
-     * transparent — they are *used*.
+     * Transparent system chrome (overlays only plus user-declared): looked
+     * *through*, never anchored on. Real survival surfaces (deskclock,
+     * telecom/incallui/emergency) are never gated but are *used*, not
+     * transparent — like any whitelisted app. Whitelisted real apps are NOT
+     * transparent.
      */
+    val transparentSystemPackages: Set<String> =
+        setOf(
+            "com.android.systemui",
+            "eu.toneiv.ubktouch",
+            "miui.systemui.plugin",
+        )
+
     fun isTransparent(
         pkg: String,
         transparentPkgs: Set<String>,
-    ): Boolean = pkg in survivalPackages || pkg in transparentPkgs
+    ): Boolean = pkg in transparentSystemPackages || pkg in transparentPkgs
 
     fun isGated(
         foregroundPackage: String,

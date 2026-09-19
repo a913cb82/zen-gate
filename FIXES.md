@@ -21,7 +21,7 @@ Install streaming/Protect waits are reported separately, not charged here.
 | 3 | Ignore-window sizing | TODO log analysis (needs pull first) | TODO 15s log pull | data closes it or adaptive design |
 | 4 | Transparency generalization | Stage 1 KILLED (see log): pure `OverlayRole` + `WINPROBE` join logging + `flagRetrieveInteractiveWindows`; behavior UNCHANGED (probe only) | passive log observation, gesture round if inconclusive | `WINPROBE kind=ACCESSIBILITY_OVERLAY` for ubktouch |
 | 5 | Test literals own-pkg | CLOSED infeasible: AGP9 generates no app BuildConfig for unit tests; literals are test-only, zero runtime risk | — | — |
-| 6 | Survival device entries | DONE: ubktouch/plugin exited to seeded user set (v1, UI + boot paths); transparency-wins reorder | TODO phone verify | volume/torch popups stay quiet, gesture round blocks on time |
+| 6 | Survival device entries | DONE: ubktouch/plugin exited to seeded user set (v1, UI + boot paths); transparency-wins reorder; entry look-through | VERIFIED 2026-09-19 (b84): volume popup passes through (no re-gate), Clock quiet re-proven, feed PASS | gesture round still wants one user acceptance pass |
 | 7 | Seed whitelist | closed (correct-by-construction) | — | — |
 | 8 | Boot backoff | DONE: `restartDelaysMs` 60s+180s, both scheduled (idempotent receiver) | USER-ACCEPTED 2026-09-19: daily scheduled reboots, gate alive (uptime 16h, pid held) | closed by user report |
 | 9 | Keyguard seam | DONE: `isLockedOut` seam, guard uses it (no behavior change) | none (existing lockscreen tests cover) | suite green |

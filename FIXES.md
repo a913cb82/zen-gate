@@ -18,7 +18,7 @@ Install streaming/Protect waits are reported separately, not charged here.
 |---|---|---|---|---|
 | 1 | Oracle window ↔ pool coupling | DONE: `windowMs` floor 8s + pool-scaled, wired in `onDeadline` | TODO log pull | Anki in-and-out blocks on time |
 | 2 | Cache TTL invalidation | DONE: `refreshDue` + unlock-forced `dropPackageCaches` (throttled) | deferred to next keyboard/launcher change | refresh in unlock logs |
-| 3 | Ignore-window sizing | TODO log analysis (needs pull first) | TODO 15s log pull | data closes it or adaptive design |
+| 3 | Ignore-window sizing | samples: 1s (old), 0.043s (2026-09-19, coordinated lock/unlock) | open: keep appending gaps from routine pulls | fixed-vs-adaptive at p99 |
 | 4 | Transparency generalization | Stage 1 KILLED (see log): pure `OverlayRole` + `WINPROBE` join logging + `flagRetrieveInteractiveWindows`; behavior UNCHANGED (probe only) | passive log observation, gesture round if inconclusive | `WINPROBE kind=ACCESSIBILITY_OVERLAY` for ubktouch |
 | 5 | Test literals own-pkg | CLOSED infeasible: AGP9 generates no app BuildConfig for unit tests; literals are test-only, zero runtime risk | — | — |
 | 6 | Survival device entries | DONE: ubktouch/plugin exited to seeded user set (v1, UI + boot paths); transparency-wins reorder; entry look-through | VERIFIED 2026-09-19 (b84): volume popup passes through (no re-gate), Clock quiet re-proven, feed PASS | gesture round still wants one user acceptance pass |

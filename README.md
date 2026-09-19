@@ -7,10 +7,7 @@ blocked except whitelisted apps.
 Start here: **`AGENTS.md`** (what it does, quick start, architecture, HyperOS
 lessons, status). The other docs:
 
-- `ANDROID-SETUP.md` — PC toolchain (SDK, Gradle, Java) from zero
-- `ANDROID-SETUP.md` — PC toolchain (SDK, Gradle, Java) from zero
-- `SETUP.md` — one-time setup (adb bridge, checklist grants)
-- `WORKFLOW.md` — dev loop (build, install, verify)
+- Dev procedure (toolchain, adb bridge, dev loop, HyperOS gotchas): the `android-development` skill
 - `BREAKGLASS.md` — adb escape hatches
 - `PLAN.md` — frozen functional spec
 - `PORTABILITY.md` — hardcoded / per-device / per-user inventory

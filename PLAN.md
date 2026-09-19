@@ -48,7 +48,7 @@ Alarm intents need care beyond the package entry: a firing alarm's fullscreen UI
 - Dialer: `com.google.android.dialer` (suggested user-whitelist default)
 - Clock: `com.google.android.deskclock`
 - SMS: `com.google.android.apps.messaging` (suggested user-whitelist default)
-- adb bridge: see `SETUP.md` (usbipd bind + hidden logon task + udev rule; survives reboots/replugs/port changes); `screencap` verified working (agent can visually inspect the phone).
+- adb bridge: values in `PORTABILITY.md`, procedure in the android-development skill; `screencap` verified working (agent can visually inspect the phone).
 
 ### 3b. User-configurable (via in-app UI)
 

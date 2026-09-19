@@ -25,12 +25,16 @@ A different user swaps these for their own dialer/SMS (or nothing — seeding is
 Whitelist contents, all knob values, usages-today, pool/session leftovers.
 A fresh install starts from spec defaults + seed whitelist above.
 
-## Per-device environment (`SETUP.md`)
+## Per-device environment (values here; procedure in the android-development skill)
 
 - adb bridge: usbipd hardware-id `2717:ff88`, device `c3c8b7bf`, hidden logon task
-  `usbipd Xiaomi ADB auto-attach`, udev rule, `~/platform-tools` on PATH.
+  `usbipd Xiaomi ADB auto-attach`, udev rule `51-xiaomi.rules`, `~/platform-tools` on PATH.
+- RSA key in WSL `~/.android/adbkey` — phone trust survives reboots.
+- HyperOS may switch USB debugging (Security settings) off after a reboot —
+  re-check when screenshots/input stop while `adb devices` still shows `device`.
 - HyperOS exemptions are mandatory, not optional: battery-unrestricted + autostart
   for the app, or background delivery starves (proven by outage, not theory).
+- Steady state: replugs/reboots need no action; fallback `usbipd attach --wsl --busid <BUSID>`.
 
 ## HyperOS behaviors the design depends on (re-verify on any new ROM)
 

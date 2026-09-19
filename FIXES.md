@@ -95,3 +95,13 @@ TODO on resume (in order):
   erodes seconds while an alarm rings screen-on (no reliable ringing signal
   exists — no deskclock window event unlocked; NEXT_ALARM_CLOCK_CHANGED
   fires after). Wont-fix unless a clean signal appears.
+
+## 2026-09-19 late: own-package stale anchor (b87)
+
+- Symptom as Clock, self-hosted: block labeled olauncher over Zen Gate
+  settings. User log showed `root=null -> Launch(olauncher)` then
+  `foreground=com.abrai.zengate`. Cause: shouldAnchor excluded own, so
+  settings browsing never moved the sticky anchor.
+- Fix `36c5201`: own anchors (transparent still wins); live/deadline paths
+  unchanged. Verified on phone: grant-into-settings, expiry mid-settings
+  -> `root=null verdict=Skip`, UI 100% own, no block. Suite 68/68.

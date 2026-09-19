@@ -74,6 +74,28 @@ object GatePolicy {
         return foregroundPackage !in survivalPackages
     }
 
+    /**
+     * Sticky-anchor decision for the window-event path: only real surfaces
+     * anchor the status line and the no-window verdict. Gated apps always
+     * anchor; whitelisted apps and real survival surfaces (deskclock/telecom)
+     * anchor when not transparent; transparent overlays, IMEs, our own UI
+     * and empties never do (else every swipe flaps the verdict and a
+     * whitelisted transient reads as free use).
+     */
+    fun shouldAnchor(
+        pkg: String,
+        ownPackage: String,
+        extraIgnored: Set<String> = emptySet(),
+        userWhitelist: Set<String> = emptySet(),
+        transparentPkgs: Set<String> = emptySet(),
+    ): Boolean {
+        if (pkg.isEmpty()) return false
+        if (isGated(pkg, ownPackage, extraIgnored, userWhitelist)) return true
+        if (pkg == ownPackage || pkg in extraIgnored) return false
+        if (isTransparent(pkg, transparentPkgs)) return false
+        return pkg in userWhitelist || pkg in survivalPackages
+    }
+
     fun isSessionActive(
         nowMs: Long,
         sessionExpiryMs: Long,

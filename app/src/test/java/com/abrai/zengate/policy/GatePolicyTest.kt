@@ -34,6 +34,39 @@ class GatePolicyTest {
     }
 
     @Test
+    fun `anchor covers gated, whitelisted, and real survival surfaces`() {
+        val imes = setOf("com.google.android.inputmethod.latin")
+        // Gated always anchors.
+        assertTrue(GatePolicy.shouldAnchor("com.instagram.android", own))
+        // Whitelisted real app anchors.
+        assertTrue(GatePolicy.shouldAnchor("com.ichi2.anki", own, emptySet(), setOf("com.ichi2.anki")))
+        // Real survival surfaces anchor even with no whitelist entry.
+        assertTrue(GatePolicy.shouldAnchor("com.google.android.deskclock", own))
+        assertTrue(GatePolicy.shouldAnchor("com.android.server.telecom", own))
+    }
+
+    @Test
+    fun `anchor excludes overlays, own package, imes, and empties`() {
+        val imes = setOf("com.google.android.inputmethod.latin")
+        assertFalse(GatePolicy.shouldAnchor("eu.toneiv.ubktouch", own))
+        assertFalse(GatePolicy.shouldAnchor("com.android.systemui", own))
+        assertFalse(GatePolicy.shouldAnchor("miui.systemui.plugin", own))
+        // User-declared transparent whitelisted app must not read as free use.
+        assertFalse(
+            GatePolicy.shouldAnchor(
+                "com.ichi2.anki",
+                own,
+                emptySet(),
+                setOf("com.ichi2.anki"),
+                setOf("com.ichi2.anki"),
+            ),
+        )
+        assertFalse(GatePolicy.shouldAnchor(own, own))
+        assertFalse(GatePolicy.shouldAnchor("com.google.android.inputmethod.latin", own, imes))
+        assertFalse(GatePolicy.shouldAnchor("", own))
+    }
+
+    @Test
     fun `real survival surfaces are used, not transparent`() {
         // deskclock/telecom are never gated but are real fullscreen apps:
         // they must anchor and Skip like any whitelisted app.

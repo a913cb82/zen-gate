@@ -67,15 +67,8 @@ class ZenGateService : AccessibilityService() {
             val pkg = event.packageName?.toString().orEmpty()
             val gated = GatePolicy.isGated(pkg, packageName, imePackages(), GateState.userWhitelist)
             // Only real surfaces anchor the status line and the no-window
-            // verdict: transient system overlays (shade, unlock handoff,
-            // keyboards, our own UI) would make it flap on every swipe — and a
-            // whitelisted transient must never read as "using a free app".
-            if (gated ||
-                (
-                    pkg in GateState.userWhitelist &&
-                        !GatePolicy.isTransparent(pkg, GateState.transparentPkgs)
-                )
-            ) {
+            // verdict (pure seam in GatePolicy, headless-tested).
+            if (GatePolicy.shouldAnchor(pkg, packageName, imePackages(), GateState.userWhitelist, GateState.transparentPkgs)) {
                 GateState.lastEventPkg.value = pkg
             }
             Log.d(TAG, "foreground=$pkg gated=$gated")

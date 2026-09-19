@@ -36,6 +36,20 @@ object GateStoreKeys {
     val K_RESET_MINUTE = intPreferencesKey("k_reset_minute")
 }
 
+/**
+ * Item-3 exit: device overlays owned by the user transparent set, seeded
+ * versioned (idempotent) wherever the gate can start — UI open and boot path.
+ * ubktouch is picker-listable; the MIUI plugin has no launcher activity, so
+ * the seed is its only route in.
+ */
+val SeedTransparentPackages: Set<String> =
+    setOf(
+        "eu.toneiv.ubktouch",
+        "miui.systemui.plugin",
+    )
+
+const val SEED_TRANSPARENT_VERSION_CURRENT = 1
+
 /** Full engine snapshot for the in-memory mirror. */
 data class EngineSnapshot(
     val poolSec: Long = 10,

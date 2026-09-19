@@ -13,8 +13,8 @@ window introspection and lies about process importance — see HyperOS notes).
 | `com.android.server.telecom`, `com.android.incallui`, `com.android.emergency` | Calls must ring through | Usually identical on AOSP ROMs; verify OEM dialer packages |
 | `com.android.systemui` | Shade/recents/power menu are OS surfaces | Same on AOSP; heavy skins may add sibling packages |
 | `com.google.android.deskclock` | Alarms ring through | Devices with a different default clock app need that package instead |
-| `eu.toneiv.ubktouch` | **THIS DEVICE ONLY** — user's gesture overlay; transient unlock-handoff surface, treated as transparent | Any other gesture/overlay app needs its package added here, or it will blind the gate the way UbikiTouch did |
-| `miui.systemui.plugin` | **MIUI/HyperOS ONLY** — torch/volume overlay with no launcher activity (can't be whitelisted via picker) | Other skins have their own plugin packages (or none) |
+| `eu.toneiv.ubktouch` | **THIS DEVICE ONLY** — user's gesture overlay; transient unlock-handoff surface, owned by the seeded transparent set (v1, picker-listable) — no longer hardcoded | Any other gesture/overlay app needs its package in the transparent set, or it will blind the gate the way UbikiTouch did |
+| `miui.systemui.plugin` | **MIUI/HyperOS ONLY** — torch/volume overlay with no launcher activity; owned by the seeded transparent set (v1, seed-only, unlistable) — no longer hardcoded | Other skins have their own plugin packages (or none) |
 
 Seed whitelist defaults (`MainActivity.kt` → `GateStore.seedDefaults`, version 2):
 `com.google.android.dialer`, `com.google.android.apps.messaging`, self.

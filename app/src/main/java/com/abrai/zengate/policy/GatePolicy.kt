@@ -12,12 +12,8 @@ object GatePolicy {
             "com.android.emergency",
             "com.android.systemui",
             "com.google.android.deskclock",
-            // Unlock-handoff overlay on this device: transient (fires at unlock,
-            // never again), so it must never anchor alarm-time launches.
-            "eu.toneiv.ubktouch",
-            // MIUI system plugin: torch/volume/overlay surfaces with no launcher
-            // activity (unlistable in the picker). System UI, never gated.
-            "miui.systemui.plugin",
+            // Item-3 exit: ubktouch + miui.systemui.plugin left this list.
+            // The seeded user transparent set owns them now (see SeedTransparentPackages).
         )
 
     /**
@@ -43,17 +39,15 @@ object GatePolicy {
     ): Boolean = force && nowMs - lastForcedMs > throttleMs
 
     /**
-     * Transparent system chrome (overlays only plus user-declared): looked
-     * *through*, never anchored on. Real survival surfaces (deskclock,
+     * Transparent system chrome (hardcoded overlays only, plus user-declared):
+     * looked *through*, never anchored on. Real survival surfaces (deskclock,
      * telecom/incallui/emergency) are never gated but are *used*, not
-     * transparent — like any whitelisted app. Whitelisted real apps are NOT
-     * transparent.
+     * transparent — like any whitelisted app. Device overlays (ubktouch +
+     * MIUI plugin) are user-owned via the seeded transparent set, not here.
      */
     val transparentSystemPackages: Set<String> =
         setOf(
             "com.android.systemui",
-            "eu.toneiv.ubktouch",
-            "miui.systemui.plugin",
         )
 
     fun isTransparent(
@@ -76,11 +70,12 @@ object GatePolicy {
 
     /**
      * Sticky-anchor decision for the window-event path: only real surfaces
-     * anchor the status line and the no-window verdict. Gated apps always
-     * anchor; whitelisted apps and real survival surfaces (deskclock/telecom)
-     * anchor when not transparent; transparent overlays, IMEs, our own UI
-     * and empties never do (else every swipe flaps the verdict and a
-     * whitelisted transient reads as free use).
+     * anchor the status line and the no-window verdict. Transparent overlays
+     * never anchor — not even gated ones the user marked transparent (the
+     * look-through would be void otherwise). Gated apps anchor; whitelisted
+     * apps and real survival surfaces (deskclock/telecom) anchor when not
+     * transparent; IMEs, our own UI and empties never do (else every swipe
+     * flaps the verdict and a whitelisted transient reads as free use).
      */
     fun shouldAnchor(
         pkg: String,
@@ -90,10 +85,11 @@ object GatePolicy {
         transparentPkgs: Set<String> = emptySet(),
     ): Boolean {
         if (pkg.isEmpty()) return false
-        if (isGated(pkg, ownPackage, extraIgnored, userWhitelist)) return true
         if (pkg == ownPackage || pkg in extraIgnored) return false
         if (isTransparent(pkg, transparentPkgs)) return false
-        return pkg in userWhitelist || pkg in survivalPackages
+        return isGated(pkg, ownPackage, extraIgnored, userWhitelist) ||
+            pkg in userWhitelist ||
+            pkg in survivalPackages
     }
 
     fun isSessionActive(

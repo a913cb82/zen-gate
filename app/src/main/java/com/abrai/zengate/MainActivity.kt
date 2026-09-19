@@ -76,11 +76,8 @@ class MainActivity : ComponentActivity() {
                         version = 2,
                     )
                     store.seedTransparent(
-                        setOf(
-                            "eu.toneiv.ubktouch",
-                            "miui.systemui.plugin",
-                        ),
-                        version = 1,
+                        SeedTransparentPackages,
+                        version = SEED_TRANSPARENT_VERSION_CURRENT,
                     )
                 }
                 var screen by remember { mutableStateOf("home") }

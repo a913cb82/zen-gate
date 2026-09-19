@@ -61,6 +61,11 @@ class GateService : Service() {
             store.transparent.collect { GateState.transparentPkgs = it }
         }
         scope.launch {
+            // Boot-path coverage for the seeded transparent set (MainActivity
+            // seeds the same version on UI open; versioned, so idempotent).
+            store.seedTransparent(SeedTransparentPackages, SEED_TRANSPARENT_VERSION_CURRENT)
+        }
+        scope.launch {
             combine(
                 store.enabled,
                 store.snapshot,

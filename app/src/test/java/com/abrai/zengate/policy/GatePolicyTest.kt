@@ -23,14 +23,40 @@ class GatePolicyTest {
     }
 
     @Test
-    fun `transparency covers overlays only plus the user set`() {
+    fun `transparency covers hardcoded systemui plus the user set`() {
         val custom = setOf("com.example.overlay")
-        assertTrue(GatePolicy.isTransparent("eu.toneiv.ubktouch", emptySet()))
         assertTrue(GatePolicy.isTransparent("com.android.systemui", emptySet()))
-        assertTrue(GatePolicy.isTransparent("miui.systemui.plugin", emptySet()))
         assertTrue(GatePolicy.isTransparent("com.example.overlay", custom))
         assertFalse(GatePolicy.isTransparent("com.ichi2.anki", custom))
         assertFalse(GatePolicy.isTransparent("com.instagram.android", custom))
+    }
+
+    @Test
+    fun `device overlays are user-owned, not hardcoded`() {
+        // Item-3 exit: ubktouch/plugin left the hardcoded sets; the seeded
+        // user set carries them.
+        assertFalse(GatePolicy.survivalPackages.contains("eu.toneiv.ubktouch"))
+        assertFalse(GatePolicy.survivalPackages.contains("miui.systemui.plugin"))
+        assertFalse(GatePolicy.isTransparent("eu.toneiv.ubktouch", emptySet()))
+        assertFalse(GatePolicy.isTransparent("miui.systemui.plugin", emptySet()))
+        val seeded = setOf("eu.toneiv.ubktouch", "miui.systemui.plugin")
+        assertTrue(GatePolicy.isTransparent("eu.toneiv.ubktouch", seeded))
+        assertTrue(GatePolicy.isTransparent("miui.systemui.plugin", seeded))
+    }
+
+    @Test
+    fun `transparency wins over gating when anchoring`() {
+        // A gated app the user marked transparent is looked through: it must
+        // never anchor the sticky verdict.
+        assertFalse(
+            GatePolicy.shouldAnchor(
+                "com.instagram.android",
+                own,
+                emptySet(),
+                emptySet(),
+                setOf("com.instagram.android"),
+            ),
+        )
     }
 
     @Test
@@ -48,9 +74,10 @@ class GatePolicyTest {
     @Test
     fun `anchor excludes overlays, own package, imes, and empties`() {
         val imes = setOf("com.google.android.inputmethod.latin")
-        assertFalse(GatePolicy.shouldAnchor("eu.toneiv.ubktouch", own))
+        val seeded = setOf("eu.toneiv.ubktouch", "miui.systemui.plugin")
+        assertFalse(GatePolicy.shouldAnchor("eu.toneiv.ubktouch", own, emptySet(), emptySet(), seeded))
         assertFalse(GatePolicy.shouldAnchor("com.android.systemui", own))
-        assertFalse(GatePolicy.shouldAnchor("miui.systemui.plugin", own))
+        assertFalse(GatePolicy.shouldAnchor("miui.systemui.plugin", own, emptySet(), emptySet(), seeded))
         // User-declared transparent whitelisted app must not read as free use.
         assertFalse(
             GatePolicy.shouldAnchor(
@@ -91,9 +118,11 @@ class GatePolicyTest {
     }
 
     @Test
-    fun `unlock handoff overlay stays survival (transient, never an alarm anchor)`() {
-        assertTrue(GatePolicy.survivalPackages.contains("eu.toneiv.ubktouch"))
-        assertFalse(GatePolicy.isGated("eu.toneiv.ubktouch", own))
+    fun `exited overlays gate by default, user set quiets them`() {
+        // Item-3 exit: no hardcoded exemption remains; the seeded user set
+        // carries them (see device-overlays test above).
+        assertTrue(GatePolicy.isGated("eu.toneiv.ubktouch", own))
+        assertTrue(GatePolicy.isGated("miui.systemui.plugin", own))
     }
 
     @Test

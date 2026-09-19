@@ -37,8 +37,8 @@ Everything on the phone is blocked except a survival whitelist + user-whiteliste
 | Emergency (`com.android.emergency` etc.) | Safety |
 | SystemUI (`com.android.systemui`) — special-cased, not counted | Shade/recents/power menu are OS surfaces; can't be covered, so ignore (no drain, no block) rather than fight |
 | Clock / alarm (`com.google.android.deskclock` — verified default + `SHOW_ALARMS` handler) | Alarms must ring through: never block, drain, or cover fullscreen alarm intents |
-| Gesture overlays (`eu.toneiv.ubktouch` — this device) | Transient unlock-handoff/gesture surface: transparent to the gate (never anchors launches, never blinds the last-gated anchor) |
-| MIUI plugin surfaces (`miui.systemui.plugin` — torch/volume overlays, no launcher activity) | System UI with no picker presence: never gated |
+| Gesture overlays (`eu.toneiv.ubktouch` — this device) | Transient unlock-handoff/gesture surface, owned by the seeded transparent toggle (v1): looked through, never anchors launches, never blinds the last-gated anchor. No longer hardcoded. |
+| MIUI plugin surfaces (`miui.systemui.plugin` — torch/volume overlays, no launcher activity) | System UI with no picker presence, owned by the seeded transparent toggle (v1, seed-only route in). No longer hardcoded. |
 
 Alarm intents need care beyond the package entry: a firing alarm's fullscreen UI must be let through even mid-block (never launch/keep the block over it).
 

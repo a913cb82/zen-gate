@@ -24,6 +24,9 @@ class Bug3OverlayVerdictTest {
                 lastEventPkg = "com.instagram.android",
                 ownPkg = "com.abrai.zengate",
                 userWhitelist = setOf("com.ichi2.anki", "eu.toneiv.ubktouch"),
+                // Item-3 exit: ubktouch is transparent via the seeded user set,
+                // not via hardcoded survival.
+                transparentPkgs = setOf("eu.toneiv.ubktouch"),
                 keyguardLocked = false,
                 interactive = true,
             ),

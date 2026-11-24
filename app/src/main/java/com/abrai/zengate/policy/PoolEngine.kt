@@ -12,6 +12,8 @@ data class ZenConfig(
     val sessionAllowSec: Long = 300,
     /** Quick-open button countdown; 0 hides the button. */
     val quickWaitSec: Long = 5,
+    /** Kill-switch length; editable in the Timers screen. */
+    val pauseDurationSec: Long = 30 * 60,
     val resetHour: Int = 0,
     val resetMinute: Int = 0,
 )

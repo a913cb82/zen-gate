@@ -37,8 +37,7 @@ object GatePolicy {
      * Whole minutes left, ceiling: "back in 30 min" holds until actually
      * under 29:00; zero stays zero (which reads as active, never "0 min").
      */
-    fun pauseMinLeft(remainingMs: Long): Long =
-        if (remainingMs <= 0) 0 else (remainingMs + 59_999) / 60_000
+    fun pauseMinLeft(remainingMs: Long): Long = if (remainingMs <= 0) 0 else (remainingMs + 59_999) / 60_000
 
     /**
      * Locked-or-dark suppression: the gate never applies while the keyguard is

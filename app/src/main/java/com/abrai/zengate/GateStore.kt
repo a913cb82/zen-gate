@@ -31,6 +31,7 @@ object GateStoreKeys {
     val K_UNLOCK_POOL = longPreferencesKey("k_unlock_pool")
     val K_BASE_WAIT = longPreferencesKey("k_base_wait")
     val K_WAIT_INC = longPreferencesKey("k_wait_inc")
+    val K_PAUSE_SEC = longPreferencesKey("k_pause_sec")
     val K_RESET_HOUR = intPreferencesKey("k_reset_hour")
     val K_RESET_MINUTE = intPreferencesKey("k_reset_minute")
 }
@@ -100,6 +101,7 @@ class GateStore(
                 waitIncrementSec = it[GateStoreKeys.K_WAIT_INC] ?: defaults.waitIncrementSec,
                 sessionAllowSec = it[GateStoreKeys.K_SESSION_ALLOW] ?: defaults.sessionAllowSec,
                 quickWaitSec = it[GateStoreKeys.K_QUICK_WAIT] ?: defaults.quickWaitSec,
+                pauseDurationSec = it[GateStoreKeys.K_PAUSE_SEC] ?: defaults.pauseDurationSec,
                 resetHour = it[GateStoreKeys.K_RESET_HOUR] ?: defaults.resetHour,
                 resetMinute = it[GateStoreKeys.K_RESET_MINUTE] ?: defaults.resetMinute,
             )

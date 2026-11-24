@@ -3,29 +3,23 @@ package com.abrai.zengate
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** Block-screen Open button label follows the session knob in words. */
+/** Block-screen Open button labels follow the knobs in compact form. */
 class BlockLabelTest {
     @Test
-    fun `quick-open label matches free time`() {
-        assertEquals("Open for 15 seconds", BlockActivity.openLabel(15))
+    fun `whole minutes read in minutes`() {
+        assertEquals("Open for 1 min", BlockActivity.openLabel(60))
+        assertEquals("Open for 5 min", BlockActivity.openLabel(300))
     }
 
     @Test
-    fun `sub-minute sessions read in seconds`() {
-        assertEquals("Open for 30 seconds", BlockActivity.openLabel(30))
-        assertEquals("Open for 1 second", BlockActivity.openLabel(1))
+    fun `sub-minute grants read in seconds`() {
+        assertEquals("Open for 15 s", BlockActivity.openLabel(15))
+        assertEquals("Open for 1 s", BlockActivity.openLabel(1))
     }
 
     @Test
-    fun `exact minutes read in minutes`() {
-        assertEquals("Open for 1 minute", BlockActivity.openLabel(60))
-        assertEquals("Open for 5 minutes", BlockActivity.openLabel(300))
-    }
-
-    @Test
-    fun `mixed durations read minutes and seconds`() {
-        assertEquals("Open for 1 minute 38 seconds", BlockActivity.openLabel(98))
-        assertEquals("Open for 1 minute 1 second", BlockActivity.openLabel(61))
-        assertEquals("Open for 2 minutes 5 seconds", BlockActivity.openLabel(125))
+    fun `mixed durations keep both parts`() {
+        assertEquals("Open for 1 min 38 s", BlockActivity.openLabel(98))
+        assertEquals("Open for 2 min 5 s", BlockActivity.openLabel(125))
     }
 }

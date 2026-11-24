@@ -5,21 +5,31 @@ import android.os.Bundle
 import android.os.SystemClock
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -29,90 +39,100 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.abrai.zengate.policy.BlockUiFactory
+import com.abrai.zengate.policy.DurationFmt
+import com.abrai.zengate.ui.BlockBottom
+import com.abrai.zengate.ui.BlockMid
+import com.abrai.zengate.ui.BlockTop
+import com.abrai.zengate.ui.Mint
+import com.abrai.zengate.ui.OnMint
+import com.abrai.zengate.ui.zenTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * M2: fully opaque block. Fixed 30s wait (M3 makes it escalating), then Open
- * grants a fixed 5-min session and returns to the gated app.
+ * Fully opaque block. The countdown is the long/primary wait; the quick pool
+ * button can unlock earlier without moving the big timer. Leaving the screen
+ * restarts the wait (it only ever runs while visible).
  */
 class BlockActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+        )
         isShowing = true
         if (currentPkg.isEmpty()) {
             currentPkg = intent.getStringExtra(EXTRA_PACKAGE).orEmpty()
         }
         Log.d(TAG, "block created pkg=$currentPkg")
-        // Swallow Back: the wait is the only way through (kill switch lives in the shade).
         onBackPressedDispatcher.addCallback(this, AlwaysEnabledCallback())
         setContent {
-            val context = LocalContext.current
-            // Dynamic (Material You) scheme for controls, but no themed Surface:
-            // the block itself stays black (sensory-deprivation, AMOLED). The
-            // button then follows the system accent instead of fixed purple.
-            val scheme =
-                if (isSystemInDarkTheme()) {
-                    dynamicDarkColorScheme(context)
-                } else {
-                    dynamicLightColorScheme(context)
-                }
-            MaterialTheme(colorScheme = scheme) {
+            zenTheme {
                 val scope = rememberCoroutineScope()
                 val waitSec = intent.getIntExtra(EXTRA_WAIT_SEC, WAIT_SEC).coerceAtLeast(1)
-                // resetTick is snapshot state: bumping it recomposes with a fresh countdown.
-                // Companion vars alone would not retrigger composition (M2 lesson).
                 val tick by resetTick
                 val resetKey = currentPkg + "/" + tick
+                val cfg = GateState.config
+                val pkg = currentPkg.ifEmpty { intent.getStringExtra(EXTRA_PACKAGE).orEmpty() }
+                val label = remember(pkg) { appLabel(pkg) }
                 blockScreen(
-                    blockedPkg = currentPkg.ifEmpty { intent.getStringExtra(EXTRA_PACKAGE).orEmpty() },
+                    appLabel = label,
                     waitSec = waitSec,
+                    quickWaitSec = cfg.quickWaitSec.toInt().coerceAtLeast(0),
+                    sessionAllowSec = cfg.sessionAllowSec,
+                    unlockPoolSec = cfg.unlockPoolSec,
+                    usagesToday = GateState.usagesToday,
                     resetKey = resetKey,
-                    quickWaitSec =
-                        GateState.config.quickWaitSec
-                            .toInt()
-                            .coerceAtLeast(0),
-                    quickLabel = BlockActivity.openLabel(GateState.config.unlockPoolSec),
                     onStale = { finish() },
-                    onQuick = { pkg ->
+                    onQuick = {
                         scope.launch {
                             val wall = System.currentTimeMillis()
                             val store = GateStore(this@BlockActivity)
-                            val cfg = GateState.config
+                            val cfgNow = GateState.config
                             val granted =
                                 com.abrai.zengate.policy.PoolEngine
-                                    .phoneUnlock(rolledBase(wall, cfg), wall, cfg)
+                                    .phoneUnlock(rolledBase(wall, cfgNow), wall, cfgNow)
                             store.savePool(granted)
                             GateState.applyPool(granted)
                             GateState.drainEnterElapsedMs = SystemClock.elapsedRealtime()
                             GateAlarms.schedulePoolExpiry(this@BlockActivity, granted.poolSec * 1_000)
-                            Log.d(TAG, "quick unlock pkg=$pkg usages=${granted.usagesToday} pool=${granted.poolSec}")
+                            Log.d(
+                                TAG,
+                                "quick unlock pkg=$pkg usages=${granted.usagesToday} pool=${granted.poolSec}",
+                            )
                             GateState.ignorePkg = pkg
                             GateState.ignoreUntilElapsedMs = SystemClock.elapsedRealtime() + IGNORE_MS
                             launchBlocked(pkg)
                             finish()
                         }
                     },
-                    onUnlock = { pkg ->
+                    onUnlock = {
                         scope.launch {
                             val wall = System.currentTimeMillis()
                             val store = GateStore(this@BlockActivity)
-                            val cfg = GateState.config
+                            val cfgNow = GateState.config
                             val unlocked =
                                 com.abrai.zengate.policy.PoolEngine
-                                    .unlock(rolledBase(wall, cfg), wall, cfg)
+                                    .unlock(rolledBase(wall, cfgNow), wall, cfgNow)
                             store.savePool(unlocked)
                             GateState.applyPool(unlocked)
-                            Log.d(TAG, "unlock pkg=$pkg usages=${unlocked.usagesToday} pool=${unlocked.poolSec}")
+                            Log.d(
+                                TAG,
+                                "unlock pkg=$pkg usages=${unlocked.usagesToday} pool=${unlocked.poolSec}",
+                            )
                             GateAlarms.scheduleSessionEnd(
                                 this@BlockActivity,
-                                cfg.sessionAllowSec * 1_000,
+                                cfgNow.sessionAllowSec * 1_000,
                             )
                             GateState.ignorePkg = pkg
                             GateState.ignoreUntilElapsedMs = SystemClock.elapsedRealtime() + IGNORE_MS
@@ -148,7 +168,6 @@ class BlockActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
-        // Visibility (not just existence) drives the notification posture.
         isShowing = false
         // Any exit (home press, screen off, shade tug) invalidates the wait.
         // onResume restarts it fresh: the countdown only ever runs while shown.
@@ -194,6 +213,13 @@ class BlockActivity : ComponentActivity() {
         }
     }
 
+    private fun appLabel(pkg: String): String {
+        if (pkg.isEmpty()) return "Zen Gate"
+        return runCatching {
+            packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
+        }.getOrDefault(pkg.substringAfterLast('.'))
+    }
+
     private class AlwaysEnabledCallback : androidx.activity.OnBackPressedCallback(true) {
         override fun handleOnBackPressed() = Unit
     }
@@ -215,17 +241,8 @@ class BlockActivity : ComponentActivity() {
         // Snapshot state (not @Volatile): bumping recomposes the countdown.
         val resetTick = mutableIntStateOf(0)
 
-        /** Open-button label in words: seconds, minutes, or both. Pure. */
-        fun openLabel(sessionAllowSec: Long): String {
-            val minutes = sessionAllowSec / 60
-            val seconds = sessionAllowSec % 60
-            val parts = ArrayList<String>(2)
-            if (minutes > 0) parts.add(if (minutes == 1L) "1 minute" else "$minutes minutes")
-            if (seconds > 0 || minutes == 0L) {
-                parts.add(if (seconds == 1L) "1 second" else "$seconds seconds")
-            }
-            return "Open for " + parts.joinToString(" ")
-        }
+        /** Open-button label in compact form ("Open for 5 min"). Pure. */
+        fun openLabel(sessionAllowSec: Long): String = DurationFmt.openLabel(sessionAllowSec)
 
         private const val TAG = "ZenGate"
     }
@@ -233,20 +250,20 @@ class BlockActivity : ComponentActivity() {
 
 @Composable
 private fun blockScreen(
-    blockedPkg: String,
+    appLabel: String,
     waitSec: Int,
-    resetKey: String,
     quickWaitSec: Int,
-    quickLabel: String,
+    sessionAllowSec: Long,
+    unlockPoolSec: Long,
+    usagesToday: Int,
+    resetKey: String,
     onStale: () -> Unit,
-    onQuick: (String) -> Unit,
-    onUnlock: (String) -> Unit,
+    onQuick: () -> Unit,
+    onUnlock: () -> Unit,
 ) {
-    var remaining by remember(resetKey) { mutableIntStateOf(waitSec) }
-    var quickRemaining by remember(resetKey) { mutableIntStateOf(quickWaitSec) }
-    // Stale-block watcher: runs for the whole composition (the countdown above
-    // exits once the wait completes, but a later unlock — or a 30-min pause —
-    // must still dismiss).
+    var elapsed by remember(resetKey) { mutableIntStateOf(0) }
+    // Stale-block watcher: runs for the whole composition. A later unlock or a
+    // pause must still dismiss, even after the countdown has finished.
     LaunchedEffect(Unit) {
         val dismissGen = GateState.blockDismissGen
         while (true) {
@@ -263,42 +280,174 @@ private fun blockScreen(
             }
         }
     }
+    val maxWait = maxOf(waitSec, quickWaitSec)
     LaunchedEffect(resetKey) {
-        while (remaining > 0 || quickRemaining > 0) {
+        while (elapsed < maxWait) {
             delay(1_000)
-            if (remaining > 0) remaining--
-            if (quickRemaining > 0) quickRemaining--
+            elapsed++
         }
-        Log.d("ZenGate", "wait complete pkg=$blockedPkg")
+        Log.d("ZenGate", "wait complete")
     }
-    Column(
-        modifier = Modifier.fillMaxSize().background(Color.Black),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
+    val ui =
+        BlockUiFactory.from(
+            waitSec = waitSec.toLong(),
+            quickWaitSec = quickWaitSec.toLong(),
+            elapsedSec = elapsed.toLong(),
+            usagesToday = usagesToday,
+            sessionAllowSec = sessionAllowSec,
+            unlockPoolSec = unlockPoolSec,
+        )
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.linearGradient(listOf(BlockTop, BlockMid, BlockBottom)),
+                ),
     ) {
-        Text(blockedPkg, color = Color.Gray, fontSize = 14.sp)
-        Spacer(Modifier.height(32.dp))
-        Text("$remaining", color = Color.White, fontSize = 72.sp)
-        Spacer(Modifier.height(32.dp))
-        Button(onClick = { onUnlock(blockedPkg) }, enabled = remaining == 0) {
-            Text(BlockActivity.openLabel(GateState.config.sessionAllowSec))
-        }
-        // Quick open sits below the session button: smaller and fainter so the
-        // session stays the primary action (faint in both states, not just when
-        // disabled).
-        if (quickWaitSec > 0) {
-            Spacer(Modifier.height(16.dp))
-            Button(
-                onClick = { onQuick(blockedPkg) },
-                enabled = quickRemaining == 0,
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
-                modifier = Modifier.alpha(0.55f),
-            ) {
-                Text(
-                    if (quickRemaining > 0) "$quickRemaining s" else quickLabel,
-                    fontSize = 12.sp,
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Spacer(Modifier.weight(1f))
+            Text(
+                appLabel,
+                fontSize = 13.sp,
+                letterSpacing = 1.5.sp,
+                color = Color.White.copy(alpha = 0.45f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(40.dp))
+            Text(
+                DurationFmt.clock(ui.fullRemainingSec),
+                fontSize = 72.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+            )
+            Spacer(Modifier.height(18.dp))
+            waitBar(waitSec, resetKey)
+            Spacer(Modifier.height(52.dp))
+            if (ui.showQuick) {
+                openCard(
+                    title = ui.quickLabel,
+                    right = DurationFmt.waitValue(ui.quickRemainingSec),
+                    ready = ui.quickReady,
+                    primary = false,
+                    onClick = onQuick,
                 )
+                Spacer(Modifier.height(14.dp))
             }
+            openCard(
+                title = ui.fullLabel,
+                right = DurationFmt.waitValue(ui.fullRemainingSec),
+                ready = ui.fullReady,
+                primary = true,
+                onClick = onUnlock,
+            )
+            Spacer(Modifier.height(44.dp))
+            Text(
+                "${ui.usagesToday} full opens today",
+                fontSize = 11.sp,
+                color = Color.White.copy(alpha = 0.4f),
+            )
+            Spacer(Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun waitBar(
+    waitSec: Int,
+    resetKey: String,
+) {
+    val progress = remember(resetKey) { Animatable(0f) }
+    LaunchedEffect(resetKey) {
+        progress.animateTo(
+            targetValue = 1f,
+            animationSpec =
+                tween(
+                    durationMillis = (waitSec * 1000).coerceAtLeast(1),
+                    easing = LinearEasing,
+                ),
+        )
+    }
+    Box(
+        modifier =
+            Modifier
+                .width(240.dp)
+                .height(6.dp)
+                .background(Color.White.copy(alpha = 0.12f), RoundedCornerShape(3.dp)),
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth(progress.value.coerceIn(0f, 1f))
+                    .fillMaxHeight()
+                    .background(
+                        Brush.linearGradient(listOf(com.abrai.zengate.ui.Amber, Mint)),
+                        RoundedCornerShape(3.dp),
+                    ),
+        )
+    }
+}
+
+@Composable
+private fun openCard(
+    title: String,
+    right: String,
+    ready: Boolean,
+    primary: Boolean,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(20.dp)
+    val fill =
+        when {
+            ready && primary -> Mint
+            ready -> Color.Transparent
+            else -> Color.White.copy(alpha = 0.06f)
+        }
+    val border =
+        when {
+            ready && !primary -> BorderStroke(2.dp, Mint)
+            ready -> null
+            else -> BorderStroke(1.dp, Color.White.copy(alpha = 0.12f))
+        }
+    val titleColor =
+        when {
+            ready && primary -> OnMint
+            ready -> Color.White
+            else -> Color.White.copy(alpha = 0.55f)
+        }
+    val rightColor =
+        when {
+            ready && primary -> OnMint
+            ready -> Mint
+            else -> Color.White.copy(alpha = 0.5f)
+        }
+    Surface(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(76.dp)
+                .clip(shape)
+                .clickable(enabled = ready, role = Role.Button, onClick = onClick),
+        shape = shape,
+        color = fill,
+        border = border,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 24.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(title, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = titleColor)
+            Text(right, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = rightColor)
         }
     }
 }

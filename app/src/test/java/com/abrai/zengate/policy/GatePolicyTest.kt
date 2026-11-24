@@ -48,8 +48,14 @@ class GatePolicyTest {
     @Test
     fun `entry routes transparent overlays as pass-through`() {
         val seeded = setOf("eu.toneiv.ubktouch", "miui.systemui.plugin")
-        assertEquals(GatePolicy.EntryRoute.Pass, GatePolicy.routeEntry("miui.systemui.plugin", own, transparentPkgs = seeded))
-        assertEquals(GatePolicy.EntryRoute.Pass, GatePolicy.routeEntry("eu.toneiv.ubktouch", own, transparentPkgs = seeded))
+        assertEquals(
+            GatePolicy.EntryRoute.Pass,
+            GatePolicy.routeEntry("miui.systemui.plugin", own, transparentPkgs = seeded),
+        )
+        assertEquals(
+            GatePolicy.EntryRoute.Pass,
+            GatePolicy.routeEntry("eu.toneiv.ubktouch", own, transparentPkgs = seeded),
+        )
         assertEquals(GatePolicy.EntryRoute.Pass, GatePolicy.routeEntry("com.android.systemui", own))
         assertEquals(
             GatePolicy.EntryRoute.Pass,

@@ -1,6 +1,5 @@
 package com.abrai.zengate
 
-import android.app.AlarmManager
 import android.app.AppOpsManager
 import android.content.Context
 import android.content.pm.PackageManager
@@ -10,7 +9,7 @@ import android.provider.Settings
 
 enum class CheckStatus { OK, MISSING, MANUAL }
 
-/** One onboarding checklist row. MANUAL rows can't be verified; they show how-to text. */
+/** One setup row. The gate only needs a few things; everything else is noise. */
 data class SetupCheck(
     val id: String,
     val label: String,
@@ -18,65 +17,37 @@ data class SetupCheck(
     val detail: String,
 )
 
-/** Synchronous status reads (binder calls; cheap enough for composition-time use). */
 object SetupChecks {
+    const val ID_NOTIFICATIONS = "notifications"
+    const val ID_BATTERY = "battery"
     const val ID_A11Y = "a11y"
     const val ID_USAGE = "usage"
-    const val ID_BATTERY = "battery"
-    const val ID_AUTOSTART = "autostart"
-    const val ID_RESTRICTED = "restricted"
-    const val ID_NOTIFICATIONS = "notifications"
-    const val ID_EXACT = "exact"
 
     fun all(context: Context): List<SetupCheck> =
         listOf(
             SetupCheck(
-                ID_RESTRICTED,
-                "Allow restricted settings",
-                CheckStatus.MANUAL,
-                "Sideloaded apps only: open Zen Gate's App info, tap ⋮, Allow restricted settings.",
-            ),
-            SetupCheck(
-                ID_A11Y,
-                "Accessibility service",
-                auto(isA11yEnabled(context)),
-                "Lets the gate see which app is open. No screen content is ever read.",
-            ),
-            SetupCheck(
-                ID_USAGE,
-                "Usage access",
-                auto(hasUsageAccess(context)),
-                "Tells the gate what is on screen when a timer fires (HyperOS blinds the faster path).",
+                ID_NOTIFICATIONS,
+                "Notifications",
+                auto(hasNotifications(context)),
+                "Shows the gate status and the pause button.",
             ),
             SetupCheck(
                 ID_BATTERY,
                 "Battery unrestricted",
                 auto(isBatteryUnrestricted(context)),
-                "Without this HyperOS starves the gate (proven day-one lesson).",
+                "Set Zen Gate to No restrictions so HyperOS keeps it alive.",
             ),
             SetupCheck(
-                ID_AUTOSTART,
-                "Autostart allowed",
-                CheckStatus.MANUAL,
-                "Settings → Apps → Zen Gate → Autostart → allow. Needed for reboot survival.",
+                ID_A11Y,
+                "Accessibility service",
+                auto(isA11yEnabled(context)),
+                "Enable Zen Gate in Accessibility. Greyed out? Allow restricted settings in App info first.",
             ),
             SetupCheck(
-                "noforce",
-                "Never force-stop",
-                CheckStatus.MANUAL,
-                "Force-stop drops the accessibility binding until the next unlock; use the kill switch instead.",
-            ),
-            SetupCheck(
-                ID_NOTIFICATIONS,
-                "Notifications",
-                auto(hasNotifications(context)),
-                "Shows the persistent gate notification and kill switch.",
-            ),
-            SetupCheck(
-                ID_EXACT,
-                "Exact alarms",
-                auto(canExactAlarms(context)),
-                "Fires session/midnight timers on time.",
+                ID_USAGE,
+                "Usage access",
+                auto(hasUsageAccess(context)),
+                "Lets timers see the foreground app on HyperOS.",
             ),
         )
 
@@ -110,9 +81,4 @@ object SetupChecks {
     fun hasNotifications(context: Context): Boolean =
         context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED
-
-    fun canExactAlarms(context: Context): Boolean {
-        val alarms = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        return alarms.canScheduleExactAlarms()
-    }
 }

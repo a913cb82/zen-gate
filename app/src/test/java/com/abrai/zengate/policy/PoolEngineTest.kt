@@ -40,6 +40,12 @@ class PoolEngineTest {
     }
 
     @Test
+    fun `pause length is a knob with a 30 minute default`() {
+        assertEquals(1_800, ZenConfig().pauseDurationSec)
+        assertEquals(1_200, ZenConfig(pauseDurationSec = 1_200).pauseDurationSec)
+    }
+
+    @Test
     fun `phone unlock outside session grants grace pool`() {
         val out = PoolEngine.phoneUnlock(PoolState(poolSec = 0, usagesToday = 2), t0, cfg)
         assertEquals(10, out.poolSec)

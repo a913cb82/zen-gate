@@ -68,7 +68,14 @@ class ZenGateService : AccessibilityService() {
             val gated = GatePolicy.isGated(pkg, packageName, imePackages(), GateState.userWhitelist)
             // Only real surfaces anchor the status line and the no-window
             // verdict (pure seam in GatePolicy, headless-tested).
-            if (GatePolicy.shouldAnchor(pkg, packageName, imePackages(), GateState.userWhitelist, GateState.transparentPkgs)) {
+            if (GatePolicy.shouldAnchor(
+                    pkg,
+                    packageName,
+                    imePackages(),
+                    GateState.userWhitelist,
+                    GateState.transparentPkgs,
+                )
+            ) {
                 GateState.lastEventPkg.value = pkg
             }
             Log.d(TAG, "foreground=$pkg gated=$gated")
@@ -94,6 +101,7 @@ class ZenGateService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     private fun onGated(pkg: String) {
+        GateState.lastGatedApp.value = pkg
         val cfg = GateState.config
         val wall = System.currentTimeMillis()
         val elapsed = SystemClock.elapsedRealtime()

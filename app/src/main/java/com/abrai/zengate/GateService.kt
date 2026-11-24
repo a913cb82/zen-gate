@@ -378,19 +378,21 @@ class GateService : Service() {
     }
 
     /**
-     * Bounded 1/s refresh while grace is live on a lit screen (≤ pool seconds
-     * per grant). Everything else reuses the event-driven collector.
+     * Bounded 1/s refresh while grace or a session is live on a lit screen.
+     * Everything else reuses the event-driven collector.
      */
     private fun manageFreeTicker(line: String) {
         val power = getSystemService(PowerManager::class.java)
-        // Prefixes alone go stale: also require live pool, a lit interactive
-        // screen, and no pause/session covering the drain.
-        val structured =
-            GateState.poolSec > 0 &&
-                power.isInteractive &&
-                gateActive() &&
-                !PoolEngine.hasSession(GateState.poolState())
-        if (!(line.startsWith("Open ") || line.startsWith("Free time")) || !structured) {
+        // Prefixes alone go stale: TickGate also requires a lit interactive
+        // screen, an active gate, and live session-or-pool behind the line.
+        if (!com.abrai.zengate.policy.TickGate.shouldTick(
+                line,
+                power.isInteractive,
+                gateActive(),
+                PoolEngine.hasSession(GateState.poolState()),
+                GateState.poolSec,
+            )
+        ) {
             freeTicker?.cancel()
             freeTicker = null
             return
@@ -414,9 +416,13 @@ class GateService : Service() {
                         val manager = getSystemService(NotificationManager::class.java)
                         manager.notify(NOTIFICATION_ID, buildNotification(gateActive()))
                     }
-                    if (!(tick.startsWith("Open ") || tick.startsWith("Free time")) ||
-                        GateState.poolSec <= 0 ||
-                        !gateActive()
+                    if (!com.abrai.zengate.policy.TickGate.shouldTick(
+                            tick,
+                            power.isInteractive,
+                            gateActive(),
+                            PoolEngine.hasSession(GateState.poolState()),
+                            GateState.poolSec,
+                        )
                     ) {
                         break
                     }

@@ -194,26 +194,12 @@ private fun homeScreen(
             }) {
                 Text("Pause for 30 min")
             }
-            Text("Auto-resumes at " + clockLabel(now + GatePolicy.PAUSE_DURATION_MS))
         }
         Button(onClick = onPicker) { Text("Whitelisted apps") }
         Button(onClick = onKnobs) { Text("Timings") }
         Button(onClick = onSetup) { Text("Setup checklist") }
     }
 }
-
-/** Wall-clock HH:MM for pause/resume labels. */
-private fun clockLabel(wallMs: Long): String =
-    try {
-        java.time.LocalTime
-            .ofInstant(
-                java.time.Instant.ofEpochMilli(wallMs),
-                java.time.ZoneId.systemDefault(),
-            ).toString()
-            .substring(0, 5)
-    } catch (t: Throwable) {
-        ""
-    }
 
 private data class AppEntry(
     val label: String,

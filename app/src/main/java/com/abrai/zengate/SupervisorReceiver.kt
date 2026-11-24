@@ -3,6 +3,7 @@ package com.abrai.zengate
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.SystemClock
 import android.util.Log
 import com.abrai.zengate.policy.PoolEngine
 import kotlinx.coroutines.CoroutineScope
@@ -52,7 +53,7 @@ class SupervisorReceiver : BroadcastReceiver() {
                 val cur = snap.copy(poolSec = 0)
                 GateState.applyPool(cur)
                 store.savePool(cur)
-                GateState.drainEnterElapsedMs = 0L
+                GateState.drainEnterElapsedMs = null
                 Log.d(TAG, "pool expired; forwarding to gate service")
                 forward(context, GateAlarms.ACTION_POOL_EXPIRED)
             }
@@ -65,16 +66,28 @@ class SupervisorReceiver : BroadcastReceiver() {
                 forward(context, GateAlarms.ACTION_SESSION_END)
             }
             GateAlarms.ACTION_PAUSE_END -> {
-                // Fixed 30-min pause elapsed: clear store-direct (same
+                // Pause elapsed (configurable duration): clear store-direct (same
                 // fresh-process discipline as the other branches).
                 GateState.pauseUntilMs = 0
                 store.setPauseUntil(0)
+                // Re-arm the drain from the persisted remainder when an app is
+                // still gated, pool remains, and no session covers it.
+                synchronized(GateState.drainLock) {
+                    if (GateState.lastGatedPkg != null &&
+                        snap.poolSec > 0 &&
+                        !PoolEngine.hasSession(snap) &&
+                        GateState.drainEnterElapsedMs == null
+                    ) {
+                        GateState.drainEnterElapsedMs = SystemClock.elapsedRealtime()
+                        GateAlarms.schedulePoolExpiry(context, snap.poolSec * 1_000)
+                    }
+                }
                 Log.d(TAG, "pause ended; gate active")
             }
             GateAlarms.ACTION_MIDNIGHT -> {
                 val now = System.currentTimeMillis()
                 val today = PoolEngine.dayIdFor(now, cfg.resetHour, cfg.resetMinute)
-                val reset = PoolEngine.midnightReset(today, now, cfg)
+                val reset = PoolEngine.midnightReset(today, cfg)
                 GateState.applyPool(reset)
                 store.savePool(reset)
                 GateAlarms.scheduleMidnight(context, cfg.resetHour, cfg.resetMinute, now)

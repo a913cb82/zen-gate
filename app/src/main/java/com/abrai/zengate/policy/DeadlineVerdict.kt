@@ -27,19 +27,21 @@ object DeadlineVerdict {
         ownPkg: String,
         userWhitelist: Set<String>,
         transparentPkgs: Set<String> = emptySet(),
+        extraIgnored: Set<String> = emptySet(),
         keyguardLocked: Boolean,
         interactive: Boolean,
     ): Outcome {
         if (!enabled) return Outcome.Skip
         if (sessionRemainingMs > 0) return Outcome.Skip
         if (!interactive || keyguardLocked) return Outcome.Skip
-        if (rootPkg == null) return anchorOutcome(lastEventPkg, ownPkg, userWhitelist)
+        if (rootPkg == null) return anchorOutcome(lastEventPkg, ownPkg, userWhitelist, transparentPkgs, extraIgnored)
         // Declared-transparent roots are looked through regardless of gating:
         // decide by the sticky anchor (the app behind the overlay). Our own UI
         // as root means the block is already up: never re-launch.
         if (rootPkg != ownPkg && GatePolicy.isTransparent(rootPkg, transparentPkgs)) {
-            return anchorOutcome(lastEventPkg, ownPkg, userWhitelist)
+            return anchorOutcome(lastEventPkg, ownPkg, userWhitelist, transparentPkgs, extraIgnored)
         }
+        if (rootPkg in extraIgnored) return Outcome.Skip
         if (!GatePolicy.isGated(rootPkg, ownPkg, emptySet(), userWhitelist)) return Outcome.Skip
         return Outcome.Launch(rootPkg)
     }
@@ -47,15 +49,19 @@ object DeadlineVerdict {
     /**
      * Sticky-anchor decision for no-window and transparent-overlay cases.
      * Gated anchor -> launch (static home/app, app behind overlay);
-     * whitelisted/transient/unknown anchor -> stay quiet (the app exit
-     * re-gates via the entry path).
+     * whitelisted/transparent/ignored/transient/unknown anchor -> stay quiet
+     * (the app exit re-gates via the entry path).
      */
     private fun anchorOutcome(
         lastEventPkg: String?,
         ownPkg: String,
         userWhitelist: Set<String>,
+        transparentPkgs: Set<String>,
+        extraIgnored: Set<String>,
     ): Outcome =
         if (lastEventPkg != null &&
+            lastEventPkg !in extraIgnored &&
+            !GatePolicy.isTransparent(lastEventPkg, transparentPkgs) &&
             GatePolicy.isGated(lastEventPkg, ownPkg, emptySet(), userWhitelist)
         ) {
             Outcome.Launch(lastEventPkg)

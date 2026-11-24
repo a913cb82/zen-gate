@@ -30,7 +30,7 @@ object BlockUiFactory {
     ): BlockUi {
         val wait = waitSec.coerceAtLeast(1)
         val quick = quickWaitSec.coerceAtLeast(0)
-        val elapsed = elapsedSec.coerceIn(0, wait)
+        val elapsed = elapsedSec.coerceIn(0, maxOf(wait, quick))
         val fullRemaining = (wait - elapsed).coerceAtLeast(0)
         val quickRemaining = (quick - elapsed).coerceAtLeast(0)
         return BlockUi(

@@ -2,6 +2,7 @@ package com.abrai.zengate.ui
 
 import android.content.Intent
 import android.os.SystemClock
+import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,10 +18,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -30,6 +34,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.abrai.zengate.BlockActivity
 import com.abrai.zengate.EngineSnapshot
 import com.abrai.zengate.GateService
@@ -54,41 +60,44 @@ fun homeScreen(
     onSetup: () -> Unit,
 ) {
     val context = LocalContext.current
-    val pauseUntil by store.pauseUntil.collectAsState(initial = 0L)
-    val snapshot by store.snapshot.collectAsState(initial = EngineSnapshot())
-    val whitelist by store.whitelist.collectAsState(initial = emptySet())
-    val cfg by store.config.collectAsState(initial = ZenConfig())
+    val pauseUntil by store.pauseUntil.collectAsState(initial = null)
+    val snapshot by store.snapshot.collectAsState(initial = null)
+    val whitelist by store.whitelist.collectAsState(initial = null)
+    val cfg by store.config.collectAsState(initial = null)
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    // Home is only visible while the user is looking at it: a 1s countdown is cheap.
-    LaunchedEffect(Unit) {
-        while (true) {
+    // 1s ticker bound to the resumed lifecycle: started on resume, cancelled
+    // on pause so Home never ticks in the background. livePool stays derived.
+    var ticking by remember { mutableStateOf(true) }
+    val lifecycleOwner = context as? ComponentActivity
+    DisposableEffect(lifecycleOwner) {
+        val observer =
+            LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_RESUME -> ticking = true
+                    Lifecycle.Event.ON_PAUSE -> ticking = false
+                    else -> Unit
+                }
+            }
+        lifecycleOwner?.lifecycle?.addObserver(observer)
+        onDispose { lifecycleOwner?.lifecycle?.removeObserver(observer) }
+    }
+    LaunchedEffect(ticking) {
+        while (ticking) {
             delay(1_000)
             now = System.currentTimeMillis()
         }
     }
-    val paused = GatePolicy.isPaused(pauseUntil, now)
-    val pauseMin = GatePolicy.pauseMinLeft(GatePolicy.pauseRemainingMs(pauseUntil, now))
-    val sessionMs = PoolEngine.sessionRemainingMs(snapshot.poolState(), now, cfg)
-    val livePool =
-        PoolEngine.displayPoolSec(
-            snapshot.poolSec,
-            GateState.drainEnterElapsedMs,
-            SystemClock.elapsedRealtime(),
-        )
-    val status =
-        GateStatus.describe(
-            enabled = !paused,
-            sessionRemainingMs = sessionMs,
-            sessionExpiryWallMs = snapshot.sessionExpiryMs,
-            poolSec = livePool,
-            usagesToday = snapshot.usagesToday,
-            foregroundPkg = null,
-            userWhitelist = emptySet(),
-            blockShowing = BlockActivity.isShowing,
-            pauseMinLeft = pauseMin,
-        )
-    val penalty = PoolEngine.penaltySec(snapshot.poolState(), cfg)
-    val missing = remember { SetupChecks.missingAutoCount(context) }
+    // Refresh the setup badge every resume, like SetupScreen does.
+    var refreshTick by remember { mutableIntStateOf(0) }
+    DisposableEffect(lifecycleOwner) {
+        val observer =
+            LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME) refreshTick++
+            }
+        lifecycleOwner?.lifecycle?.addObserver(observer)
+        onDispose { lifecycleOwner?.lifecycle?.removeObserver(observer) }
+    }
+    val missing = remember(refreshTick) { SetupChecks.missingAutoCount(context) }
     val send =
         remember(context) {
             { action: String ->
@@ -97,6 +106,42 @@ fun homeScreen(
                 }
             }
         }
+    // Loading gate: no nav rows until the first config + whitelist emission.
+    val pauseUntilV = pauseUntil
+    val snapshotV = snapshot
+    val whitelistV = whitelist
+    val cfgV = cfg
+    if (pauseUntilV == null || snapshotV == null || whitelistV == null || cfgV == null) {
+        zenScreen {
+            Spacer(Modifier.height(10.dp))
+            Text("Zen Gate", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
+            Spacer(Modifier.height(16.dp))
+            Text("Loading…", color = Muted, fontSize = 13.sp)
+        }
+        return
+    }
+    val paused = GatePolicy.isPaused(pauseUntilV, now)
+    val pauseMin = GatePolicy.pauseMinLeft(GatePolicy.pauseRemainingMs(pauseUntilV, now))
+    val sessionMs = PoolEngine.sessionRemainingMs(snapshotV.poolState(), now, cfgV)
+    val livePool =
+        PoolEngine.displayPoolSec(
+            snapshotV.poolSec,
+            GateState.drainEnterElapsedMs,
+            SystemClock.elapsedRealtime(),
+        )
+    val status =
+        GateStatus.describe(
+            enabled = !paused,
+            sessionRemainingMs = sessionMs,
+            sessionExpiryWallMs = snapshotV.sessionExpiryMs,
+            poolSec = livePool,
+            usagesToday = snapshotV.usagesToday,
+            foregroundPkg = null,
+            userWhitelist = emptySet(),
+            blockShowing = BlockActivity.isShowing,
+            pauseMinLeft = pauseMin,
+        )
+    val penalty = PoolEngine.penaltySec(snapshotV.poolState(), cfgV)
 
     zenScreen {
         Spacer(Modifier.height(10.dp))
@@ -106,12 +151,12 @@ fun homeScreen(
         homeStatusCard(
             status = status,
             now = now,
-            cfg = cfg,
-            snapshot = snapshot,
+            cfg = cfgV,
+            snapshot = snapshotV,
             livePool = livePool,
             sessionMs = sessionMs,
             pauseMin = pauseMin,
-            pauseUntil = pauseUntil,
+            pauseUntil = pauseUntilV,
             penalty = penalty,
         )
 
@@ -119,14 +164,14 @@ fun homeScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             statTile(
                 modifier = Modifier.weight(1f).height(104.dp),
-                value = snapshot.usagesToday.toString(),
+                value = snapshotV.usagesToday.toString(),
                 label = "full opens today",
                 sub = "resets midnight",
             )
             actionTile(
                 modifier = Modifier.weight(1f).height(104.dp),
                 title = if (paused) "Resume" else "Pause",
-                sub = if (paused) "gate runs now" else "${cfg.pauseDurationSec / 60} min break",
+                sub = if (paused) "gate runs now" else "${cfgV.pauseDurationSec / 60} min break",
                 caption = if (paused) "tap to re-enable" else "auto-resumes",
                 onClick = {
                     send(if (paused) GateService.ACTION_RESUME else GateService.ACTION_PAUSE)
@@ -138,15 +183,15 @@ fun homeScreen(
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             navRow(
                 title = "Whitelist",
-                subtitle = if (whitelist.isEmpty()) "No apps selected" else "${whitelist.size} apps · tap to edit",
+                subtitle = if (whitelistV.isEmpty()) "No apps selected" else "${whitelistV.size} apps · tap to edit",
                 onClick = onPicker,
             )
             navRow(
                 title = "Timers",
                 subtitle =
-                    DurationFmt.clock(cfg.sessionAllowSec) + " / " +
-                        DurationFmt.clock(cfg.unlockPoolSec) + " / " +
-                        "${cfg.baseWaitSec}s +${cfg.waitIncrementSec}s",
+                    DurationFmt.clock(cfgV.sessionAllowSec) + " / " +
+                        DurationFmt.clock(cfgV.unlockPoolSec) + " / " +
+                        "${cfgV.baseWaitSec}s +${cfgV.waitIncrementSec}s",
                 onClick = onTimers,
             )
             navRow(

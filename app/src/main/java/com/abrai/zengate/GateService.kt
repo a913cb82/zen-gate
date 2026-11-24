@@ -21,6 +21,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
@@ -28,8 +29,9 @@ import kotlinx.coroutines.launch
 
 /**
  * Persistent foreground presence for the gate (ScreenZen-shape). Mirrors
- * [GateStore] into [GateState], tracks screen on/off for session accounting,
- * and hosts the notification kill switch. Engine deadlines live in [GateAlarms].
+ * [GateStore] into [GateState], tracks screen on/off for pool drain accounting
+ * (sessions are wall-clock and unaffected by screen state), and hosts the
+ * notification kill switch. Engine deadlines live in [GateAlarms].
  */
 class GateService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -57,7 +59,11 @@ class GateService : Service() {
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_ID, "Zen Gate", NotificationManager.IMPORTANCE_MIN),
         )
-        startForeground(NOTIFICATION_ID, buildNotification(isActive()), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        startForeground(
+            NOTIFICATION_ID,
+            buildNotification(gateActive()),
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
+        )
         scope.launch {
             store.transparent.collect { GateState.transparentPkgs = it }
         }
@@ -88,21 +94,31 @@ class GateService : Service() {
                     lastResetMinute = cfg.resetMinute
                     GateAlarms.scheduleMidnight(this@GateService, lastResetHour, lastResetMinute)
                 }
+                // lastStatusLine updates even when notifications are denied so
+                // buildNotification never renders a stale line once granted.
+                val active = gateActive()
+                val line = liveLine(active, snap.poolState(), cfg, list, fg)
+                if (line != lastStatusLine) {
+                    Log.d(
+                        TAG,
+                        "status line=\"$line\" showing=${BlockActivity.isShowing} fg=$fg pool=${snap.poolSec}",
+                    )
+                    lastStatusLine = line
+                    if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
+                        android.content.pm.PackageManager.PERMISSION_GRANTED
+                    ) {
+                        manager.notify(NOTIFICATION_ID, buildNotification(active))
+                    }
+                }
                 if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
                     android.content.pm.PackageManager.PERMISSION_GRANTED
                 ) {
-                    val active = isActive()
-                    val line = liveLine(active, snap.poolState(), cfg, list, fg)
-                    if (line != lastStatusLine) {
-                        Log.d(
-                            TAG,
-                            "status line=\"$line\" showing=${BlockActivity.isShowing} fg=$fg pool=${snap.poolSec}",
-                        )
-                        lastStatusLine = line
-                        manager.notify(NOTIFICATION_ID, buildNotification(active))
-                    }
                     manageFreeTicker(line)
                 }
+            }.catch { e ->
+                // An upstream store failure must not wedge storeLoaded=false
+                // forever: the gate runs degraded on the last mirror instead.
+                Log.e(TAG, "collector failed; gate degraded", e)
             }.collect { }
         }
         registerReceiver(
@@ -115,13 +131,17 @@ class GateService : Service() {
             },
             RECEIVER_NOT_EXPORTED,
         )
-        GateAlarms.scheduleMidnight(this, GateState.config.resetHour, GateState.config.resetMinute)
+        // Midnight is scheduled inside the collector once the store loads:
+        // scheduling here would arm from GateState defaults, not persisted truth.
         scope.launch {
             // Alarms die on reboot: re-arm the pause end from persisted truth.
             // Expiry while off reads as active, so clear the stale deadline.
             val pauseUntil = store.pauseUntil.first()
             val now = System.currentTimeMillis()
             if (GatePolicy.isPaused(pauseUntil, now)) {
+                // Mirror before alarming: the collector's pauseUntil write may
+                // arrive later, and the status line reads the mirror meanwhile.
+                GateState.pauseUntilMs = pauseUntil
                 GateAlarms.schedulePauseEnd(this@GateService, pauseUntil - now)
             } else if (pauseUntil != 0L) {
                 GateState.pauseUntilMs = 0
@@ -143,6 +163,9 @@ class GateService : Service() {
                 GateState.pauseUntilMs = until
                 GateState.requestBlockDismiss()
                 store.setPauseUntil(until)
+                // Sessions are wall-clock: pausing only cancels the pool drain.
+                GateAlarms.cancelPoolExpiry(this@GateService)
+                synchronized(GateState.drainLock) { GateState.drainEnterElapsedMs = null }
                 GateAlarms.schedulePauseEnd(this@GateService, pauseMs)
                 Log.d(TAG, "paused until=$until")
             }
@@ -152,11 +175,24 @@ class GateService : Service() {
                 GateState.pauseUntilMs = 0
                 store.setPauseUntil(0)
                 GateAlarms.cancelPauseEnd(this@GateService)
+                rearmDrainFromRemainder()
                 Log.d(TAG, "pause cleared; gate active")
             }
         }
         if (intent?.action == ACTION_DEADLINE) {
-            onDeadline(intent.getStringExtra(EXTRA_DEADLINE).orEmpty())
+            val deadline = intent.getStringExtra(EXTRA_DEADLINE).orEmpty()
+            // Alarm redelivery can double-fire within ms: dedup identical
+            // deadlines inside 1500ms on the elapsed clock.
+            val now = SystemClock.elapsedRealtime()
+            synchronized(GateState.drainLock) {
+                if (deadline == GateState.lastDeadline && now - GateState.lastDeadlineAt < 1_500) {
+                    Log.d(TAG, "deadline deduped $deadline")
+                    return START_STICKY
+                }
+                GateState.lastDeadline = deadline
+                GateState.lastDeadlineAt = now
+            }
+            onDeadline(deadline)
         }
         return START_STICKY
     }
@@ -173,6 +209,25 @@ class GateService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    /**
+     * Re-arm the pool drain from the persisted remainder after a pause ends:
+     * only when an app is still gated, pool remains, and no session covers it.
+     */
+    private fun rearmDrainFromRemainder() {
+        synchronized(GateState.drainLock) {
+            val snap = GateState.poolState()
+            if (GateState.lastGatedPkg != null &&
+                snap.poolSec > 0 &&
+                !PoolEngine.hasSession(snap) &&
+                GateState.drainEnterElapsedMs == null
+            ) {
+                GateState.drainEnterElapsedMs = SystemClock.elapsedRealtime()
+                GateAlarms.schedulePoolExpiry(this, snap.poolSec * 1_000)
+                Log.d(TAG, "drain re-armed pool=${snap.poolSec}")
+            }
+        }
+    }
+
     private fun onScreenOff() {
         Log.d(TAG, "screen off")
         freeTicker?.cancel()
@@ -180,24 +235,34 @@ class GateService : Service() {
         if (!GateState.storeLoaded) return
         val elapsed = SystemClock.elapsedRealtime()
         scope.launch {
-            var snap = GateState.poolState()
-            // Pause pool drain. Sessions are wall-clock: unaffected by screen state.
-            // Write-through (not just store): the mirror must converge now, so a
-            // screen-on seconds later re-arms from the drained remainder.
+            // Mirror-clobber window: the collector may rewrite GateState
+            // between our read and our save, so persist only on actual change.
+            val before = GateState.poolState()
             val settled =
-                if (GateState.lastGatedPkg != null && !PoolEngine.hasSession(snap)) {
-                    PoolEngine.settleSegment(snap, GateState.drainEnterElapsedMs, elapsed)
-                } else {
-                    null
+                synchronized(GateState.drainLock) {
+                    val snap = GateState.poolState()
+                    // Pause pool drain. Sessions are wall-clock: unaffected by screen state.
+                    // Write-through (not just store): the mirror must converge now, so a
+                    // screen-on seconds later re-arms from the drained remainder.
+                    if (GateState.lastGatedPkg != null &&
+                        !PoolEngine.hasSession(snap) &&
+                        GateState.drainEnterElapsedMs != null
+                    ) {
+                        val s = PoolEngine.settleSegment(snap, GateState.drainEnterElapsedMs, elapsed)
+                        GateState.drainEnterElapsedMs = null
+                        GateAlarms.cancelPoolExpiry(this@GateService)
+                        if (s != null) {
+                            GateState.applyPool(s)
+                            Log.d(TAG, "screen off: settled pool=${s.poolSec}")
+                        }
+                        s
+                    } else {
+                        null
+                    }
                 }
-            if (settled != null) {
-                snap = settled
-                GateState.drainEnterElapsedMs = 0L
-                GateAlarms.cancelPoolExpiry(this@GateService)
-                GateState.applyPool(snap)
-                Log.d(TAG, "screen off: settled pool=${snap.poolSec}")
+            if (settled != null && settled != before) {
+                store.savePool(settled)
             }
-            store.savePool(snap)
         }
     }
 
@@ -205,25 +270,27 @@ class GateService : Service() {
 
     private fun onPhoneUnlock() {
         if (!GateState.storeLoaded) return
-        // New keyboards/launchers install while we look away: force the package
-        // caches to re-resolve (throttled), so fresh surfaces classify correctly.
-        val now = SystemClock.elapsedRealtime()
-        if (com.abrai.zengate.policy.GatePolicy
-                .refreshDue(now, lastCacheRefreshMs, force = true)
-        ) {
-            lastCacheRefreshMs = now
-            ZenGateService.instance?.dropPackageCaches()
-        }
         scope.launch {
+            // New keyboards/launchers install while we look away: re-resolve
+            // the package caches off the main thread (throttled TTL, no force),
+            // so fresh surfaces classify correctly.
+            val now = SystemClock.elapsedRealtime()
+            if (GatePolicy.refreshDue(now, lastCacheRefreshMs, force = false)) {
+                lastCacheRefreshMs = now
+                ZenGateService.instance?.dropPackageCaches()
+            }
             val snap = GateState.poolState()
             val cur = PoolEngine.phoneUnlock(snap, System.currentTimeMillis(), GateState.config)
+            // Mirror-clobber window (see onScreenOff): persist only on change.
             if (cur != snap) {
-                GateState.applyPool(cur)
+                synchronized(GateState.drainLock) {
+                    GateState.applyPool(cur)
+                    // Open the drain segment now: the unlock reveal often emits no
+                    // window event, and without this the grace clock never starts.
+                    GateState.drainEnterElapsedMs = SystemClock.elapsedRealtime()
+                    GateAlarms.schedulePoolExpiry(this@GateService, cur.poolSec * 1_000)
+                }
                 store.savePool(cur)
-                // Open the drain segment now: the unlock reveal often emits no
-                // window event, and without this the grace clock never starts.
-                GateState.drainEnterElapsedMs = SystemClock.elapsedRealtime()
-                GateAlarms.schedulePoolExpiry(this@GateService, cur.poolSec * 1_000)
                 refreshNotification()
                 Log.d(TAG, "phone unlock; grace pool=${cur.poolSec}")
             }
@@ -234,52 +301,54 @@ class GateService : Service() {
         Log.d(TAG, "screen on")
         if (!GateState.storeLoaded) return
         val elapsed = SystemClock.elapsedRealtime()
-        val wall = System.currentTimeMillis()
         scope.launch {
-            val cfg = GateState.config
+            // No save here: the snapshot is unchanged, and persisting it would
+            // clobber a racing collector write (mirror-clobber window).
             val snap = GateState.poolState()
-            store.savePool(snap)
             // Screen on but still locked (lockscreen camera/torch lighting the
             // screen): never re-arm the drain while the keyguard is up.
             val keys = getSystemService(KeyguardManager::class.java)
             if (keys.isKeyguardLocked) return@launch
             refreshNotification()
-            if (!PoolEngine.hasSession(snap) &&
-                GateState.lastGatedPkg != null &&
-                snap.poolSec > 0 &&
-                GateState.drainEnterElapsedMs == 0L
-            ) {
-                GateState.drainEnterElapsedMs = elapsed
-                GateAlarms.schedulePoolExpiry(this@GateService, snap.poolSec * 1_000)
+            synchronized(GateState.drainLock) {
+                val cur = GateState.poolState()
+                if (!PoolEngine.hasSession(cur) &&
+                    GateState.lastGatedPkg != null &&
+                    cur.poolSec > 0 &&
+                    GateState.drainEnterElapsedMs == null
+                ) {
+                    GateState.drainEnterElapsedMs = elapsed
+                    GateAlarms.schedulePoolExpiry(this@GateService, cur.poolSec * 1_000)
+                }
             }
         }
     }
 
-    private var lastStatusLine: String? = null
+    private var lastStatusLine: String? = "Starting…"
 
     private fun refreshNotification() {
-        if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
-            android.content.pm.PackageManager.PERMISSION_GRANTED
-        ) {
-            return
-        }
         val line =
             liveLine(
-                isActive(),
+                gateActive(),
                 GateState.poolState(),
                 GateState.config,
                 GateState.userWhitelist,
                 statusForeground(),
             )
         lastStatusLine = line
-        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification(isActive()))
+        if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification(gateActive()))
         manageFreeTicker(line)
     }
 
-    private var freeTicker: kotlinx.coroutines.Job? = null
+    @Volatile private var freeTicker: kotlinx.coroutines.Job? = null
 
     /** Gate active unless a pause deadline is in the future. */
-    private fun isActive(): Boolean = !GatePolicy.isPaused(GateState.pauseUntilMs, System.currentTimeMillis())
+    private fun gateActive(): Boolean = !GatePolicy.isPaused(GateState.pauseUntilMs, System.currentTimeMillis())
 
     /** Own window is noise: fall back to the last gated app for the status line. */
     private fun statusForeground(): String? =
@@ -314,7 +383,14 @@ class GateService : Service() {
      */
     private fun manageFreeTicker(line: String) {
         val power = getSystemService(PowerManager::class.java)
-        if (!(line.startsWith("Open ") || line.startsWith("Free time")) || !power.isInteractive) {
+        // Prefixes alone go stale: also require live pool, a lit interactive
+        // screen, and no pause/session covering the drain.
+        val structured =
+            GateState.poolSec > 0 &&
+                power.isInteractive &&
+                gateActive() &&
+                !PoolEngine.hasSession(GateState.poolState())
+        if (!(line.startsWith("Open ") || line.startsWith("Free time")) || !structured) {
             freeTicker?.cancel()
             freeTicker = null
             return
@@ -327,7 +403,7 @@ class GateService : Service() {
                     if (!power.isInteractive) break
                     val tick =
                         liveLine(
-                            isActive(),
+                            gateActive(),
                             GateState.poolState(),
                             GateState.config,
                             GateState.userWhitelist,
@@ -336,9 +412,14 @@ class GateService : Service() {
                     if (tick != lastStatusLine) {
                         lastStatusLine = tick
                         val manager = getSystemService(NotificationManager::class.java)
-                        manager.notify(NOTIFICATION_ID, buildNotification(isActive()))
+                        manager.notify(NOTIFICATION_ID, buildNotification(gateActive()))
                     }
-                    if (!(tick.startsWith("Open ") || tick.startsWith("Free time"))) break
+                    if (!(tick.startsWith("Open ") || tick.startsWith("Free time")) ||
+                        GateState.poolSec <= 0 ||
+                        !gateActive()
+                    ) {
+                        break
+                    }
                 }
                 freeTicker = null
             }
@@ -410,6 +491,7 @@ class GateService : Service() {
 
     private fun buildNotification(active: Boolean): Notification {
         val paused = !active
+        val pauseMin = (GateState.config.pauseDurationSec / 60).coerceAtLeast(1)
         val toggle =
             PendingIntent.getService(
                 this,
@@ -445,7 +527,7 @@ class GateService : Service() {
                 Notification.Action
                     .Builder(
                         null,
-                        if (paused) "Re-enable now" else "Pause 30 min",
+                        if (paused) "Re-enable now" else "Pause $pauseMin min",
                         toggle,
                     ).build(),
             ).build()

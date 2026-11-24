@@ -54,8 +54,24 @@ class PoolEngineTest {
     }
 
     @Test
+    fun `phone unlock on shrunk config clamps the pool down on grant`() {
+        // Config shrank 60 -> 10: the next grant re-seeds exactly, so the
+        // stale oversized pool cannot linger.
+        val out = PoolEngine.phoneUnlock(PoolState(poolSec = 60, usagesToday = 2), t0, cfg)
+        assertEquals(10, out.poolSec)
+        assertEquals(2, out.usagesToday)
+    }
+
+    @Test
     fun `phone unlock inside session leaves pool alone`() {
         val s = PoolState(poolSec = 0, usagesToday = 2, sessionExpiryWallMs = t0 + 300_000)
+        assertEquals(s, PoolEngine.phoneUnlock(s, t0, cfg))
+    }
+
+    @Test
+    fun `phone unlock inside session never clamps a shrunk pool`() {
+        // Clamp happens on grant only; a live session is untouched.
+        val s = PoolState(poolSec = 60, usagesToday = 2, sessionExpiryWallMs = t0 + 300_000)
         assertEquals(s, PoolEngine.phoneUnlock(s, t0, cfg))
     }
 
@@ -68,6 +84,18 @@ class PoolEngineTest {
     }
 
     @Test
+    fun `unlock saturates expiry instead of overflowing`() {
+        val out = PoolEngine.unlock(PoolState(), t0, ZenConfig(sessionAllowSec = Long.MAX_VALUE))
+        assertEquals(Long.MAX_VALUE, out.sessionExpiryWallMs)
+    }
+
+    @Test
+    fun `unlock caps usages at Int MAX`() {
+        val out = PoolEngine.unlock(PoolState(usagesToday = Int.MAX_VALUE), t0, cfg)
+        assertEquals(Int.MAX_VALUE, out.usagesToday)
+    }
+
+    @Test
     fun `drain floors at zero`() {
         assertEquals(7, PoolEngine.drain(PoolState(poolSec = 10), 3).poolSec)
         assertEquals(0, PoolEngine.drain(PoolState(poolSec = 2), 5).poolSec)
@@ -76,7 +104,7 @@ class PoolEngineTest {
     @Test
     fun `display pool subtracts open segment, floors at zero`() {
         assertEquals(7, PoolEngine.displayPoolSec(10, 1_000, 4_000))
-        assertEquals(10, PoolEngine.displayPoolSec(10, 0, 99_000))
+        assertEquals(10, PoolEngine.displayPoolSec(10, null, 99_000))
         assertEquals(0, PoolEngine.displayPoolSec(2, 1_000, 9_000))
     }
 
@@ -84,6 +112,13 @@ class PoolEngineTest {
     fun `penalty escalates per unlock`() {
         assertEquals(30, PoolEngine.penaltySec(PoolState(usagesToday = 0), cfg))
         assertEquals(50, PoolEngine.penaltySec(PoolState(usagesToday = 2), cfg))
+    }
+
+    @Test
+    fun `penalty never goes negative`() {
+        val weird = ZenConfig(baseWaitSec = -100, waitIncrementSec = -10)
+        assertEquals(0, PoolEngine.penaltySec(PoolState(usagesToday = 0), weird))
+        assertEquals(0, PoolEngine.penaltySec(PoolState(usagesToday = 50), weird))
     }
 
     @Test
@@ -108,29 +143,12 @@ class PoolEngineTest {
         val s = PoolState(poolSec = 0, usagesToday = 5, dayId = "2026-09-05", sessionExpiryWallMs = t0)
         assertTrue(PoolEngine.needsMidnightReset(s, "2026-09-06"))
         assertFalse(PoolEngine.needsMidnightReset(s, "2026-09-05"))
-        assertFalse(PoolEngine.needsMidnightReset(PoolState(dayId = ""), "2026-09-06"))
-        val out = PoolEngine.midnightReset("2026-09-06", t0, cfg)
+        assertTrue(PoolEngine.needsMidnightReset(PoolState(dayId = ""), "2026-09-06"))
+        val out = PoolEngine.midnightReset("2026-09-06", cfg)
         assertEquals(0, out.usagesToday)
         assertEquals(10, out.poolSec)
         assertEquals("2026-09-06", out.dayId)
         assertEquals(0, out.sessionExpiryWallMs)
-    }
-
-    @Test
-    fun `next reset is next HH MM occurrence UTC`() {
-        val zone = java.time.ZoneId.of("UTC")
-        // 2001-09-09T01:46:40Z, reset 00:00 -> 2001-09-10T00:00:00Z.
-        assertEquals(
-            1_000_080_000_000L,
-            com.abrai.zengate.GateAlarms
-                .nextResetMs(1_000_000_000_000L, 0, 0, zone),
-        )
-        // Same instant, reset 06:00 -> today 2001-09-09T06:00:00Z.
-        assertEquals(
-            1_000_015_200_000L,
-            com.abrai.zengate.GateAlarms
-                .nextResetMs(1_000_000_000_000L, 6, 0, zone),
-        )
     }
 
     @Test
@@ -139,6 +157,52 @@ class PoolEngineTest {
         // 2001-09-09T01:46:40Z with reset 00:00 -> 09-09; with reset 06:00 -> 09-08.
         assertEquals("2001-09-09", PoolEngine.dayIdFor(1_000_000_000_000L, 0, 0, zone))
         assertEquals("2001-09-08", PoolEngine.dayIdFor(1_000_000_000_000L, 6, 0, zone))
+    }
+
+    @Test
+    fun `day id clamps out-of-range reset times instead of throwing`() {
+        val zone = java.time.ZoneId.of("UTC")
+        assertEquals(
+            PoolEngine.dayIdFor(1_000_000_000_000L, 23, 59, zone),
+            PoolEngine.dayIdFor(1_000_000_000_000L, 25, 99, zone),
+        )
+        assertEquals(
+            PoolEngine.dayIdFor(1_000_000_000_000L, 0, 0, zone),
+            PoolEngine.dayIdFor(1_000_000_000_000L, -5, -9, zone),
+        )
+    }
+
+    @Test
+    fun `day id agrees with next reset across the DST gap`() {
+        // America/New_York springs forward 2026-03-08 02:00 -> 03:00.
+        val zone = java.time.ZoneId.of("America/New_York")
+        val instants =
+            listOf(
+                1_773_043_200_000L, // 2026-03-08T00:00:00-05:00
+                1_773_046_800_000L, // 2026-03-08T01:00:00-05:00
+                1_773_050_400_000L, // 2026-03-08T03:00:00-04:00 (first valid minute)
+                1_773_057_600_000L, // 2026-03-08T05:00:00-04:00
+            )
+        val resets = listOf(Triple(0, 0, "midnight"), Triple(2, 30, "gap"), Triple(6, 0, "morning"))
+        for (now in instants) {
+            for ((h, m, _) in resets) {
+                val next =
+                    com.abrai.zengate.GateAlarms
+                        .nextResetMs(now, h, m, zone)
+                val nextDate =
+                    java.time.Instant
+                        .ofEpochMilli(next)
+                        .atZone(zone)
+                        .toLocalDate()
+                        .minusDays(1)
+                        .toString()
+                assertEquals(
+                    "now=$now reset=$h:$m",
+                    nextDate,
+                    PoolEngine.dayIdFor(now, h, m, zone),
+                )
+            }
+        }
     }
 
     @Test
@@ -184,7 +248,7 @@ class PoolEngineTest {
 
     @Test
     fun `settle segment with no open segment owes nothing`() {
-        assertEquals(null, PoolEngine.settleSegment(PoolState(poolSec = 10), 0, 99_000))
+        assertEquals(null, PoolEngine.settleSegment(PoolState(poolSec = 10), null, 99_000))
     }
 
     @Test

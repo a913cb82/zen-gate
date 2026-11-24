@@ -7,7 +7,6 @@ import android.content.Intent
 import android.os.SystemClock
 import android.util.Log
 import java.time.Instant
-import java.time.LocalDateTime
 import java.time.ZoneId
 
 /**
@@ -33,10 +32,15 @@ object GateAlarms {
         minute: Int,
         zone: ZoneId = ZoneId.systemDefault(),
     ): Long {
-        val now = LocalDateTime.ofInstant(Instant.ofEpochMilli(nowWallMs), zone)
-        val todayReset = now.toLocalDate().atTime(hour, minute)
-        val target = if (todayReset.isAfter(now)) todayReset else todayReset.plusDays(1)
-        return target.atZone(zone).toInstant().toEpochMilli()
+        // Same clamped instant logic as PoolEngine.dayIdFor: the two agree by
+        // construction, including across DST gaps (gap resolves forward).
+        val h = hour.coerceIn(0, 23)
+        val m = minute.coerceIn(0, 59)
+        val now = Instant.ofEpochMilli(nowWallMs).atZone(zone)
+        val todayReset = now.toLocalDate().atTime(h, m).atZone(zone)
+        val target =
+            if (todayReset.toInstant().isAfter(now.toInstant())) todayReset else todayReset.plusDays(1)
+        return target.toInstant().toEpochMilli()
     }
 
     fun schedulePoolExpiry(
@@ -55,7 +59,7 @@ object GateAlarms {
         exactIn(context, ACTION_SESSION_END, RC_SESSION, delayMs)
     }
 
-    /** Kill-switch pause: fixed 30 min, wall-clock, auto-resumed by this alarm. */
+    /** Kill-switch pause: configurable duration, wall-clock, auto-resumed by this alarm. */
     fun schedulePauseEnd(
         context: Context,
         delayMs: Long,
@@ -74,9 +78,15 @@ object GateAlarms {
         val alarmManager = context.getSystemService(AlarmManager::class.java)
         val operation = operation(context, ACTION_MIDNIGHT, RC_MIDNIGHT)
         val atWall = nextResetMs(nowWallMs, hour, minute)
-        if (alarmManager.canScheduleExactAlarms()) {
-            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atWall, operation)
-        } else {
+        try {
+            if (alarmManager.canScheduleExactAlarms()) {
+                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atWall, operation)
+            } else {
+                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atWall, operation)
+            }
+        } catch (se: SecurityException) {
+            // Exact grant revoked between check and set: inexact fallback.
+            Log.w(TAG, "exact midnight denied; inexact fallback", se)
             alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atWall, operation)
         }
         Log.d(TAG, "midnight alarm set")
@@ -93,13 +103,19 @@ object GateAlarms {
         val triggerAt = SystemClock.elapsedRealtime() + delayMs.coerceAtLeast(1L)
         val exact = alarmManager.canScheduleExactAlarms()
         Log.d(TAG, "alarm schedule action=$action delayMs=$delayMs exact=$exact")
-        if (exact) {
-            alarmManager.setExactAndAllowWhileIdle(
-                AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                triggerAt,
-                operation,
-            )
-        } else {
+        try {
+            if (exact) {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                    triggerAt,
+                    operation,
+                )
+            } else {
+                alarmManager.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, operation)
+            }
+        } catch (se: SecurityException) {
+            // Exact grant revoked between check and set: inexact fallback.
+            Log.w(TAG, "exact alarm denied; inexact fallback action=$action", se)
             alarmManager.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, operation)
         }
     }

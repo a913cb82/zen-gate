@@ -34,19 +34,27 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.lifecycleScope
 import com.abrai.zengate.policy.BlockUiFactory
 import com.abrai.zengate.policy.DurationFmt
 import com.abrai.zengate.ui.BlockBottom
@@ -55,8 +63,10 @@ import com.abrai.zengate.ui.BlockTop
 import com.abrai.zengate.ui.Mint
 import com.abrai.zengate.ui.OnMint
 import com.abrai.zengate.ui.zenTheme
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Fully opaque block. The countdown is the long/primary wait; the quick pool
@@ -76,15 +86,18 @@ class BlockActivity : ComponentActivity() {
         }
         Log.d(TAG, "block created pkg=$currentPkg")
         onBackPressedDispatcher.addCallback(this, AlwaysEnabledCallback())
+        val activityScope = lifecycleScope
         setContent {
             zenTheme {
-                val scope = rememberCoroutineScope()
                 val waitSec = intent.getIntExtra(EXTRA_WAIT_SEC, WAIT_SEC).coerceAtLeast(1)
                 val tick by resetTick
-                val resetKey = currentPkg + "/" + tick
+                val resetKey = "$currentPkg/$tick/$waitSec"
                 val cfg = GateState.config
                 val pkg = currentPkg.ifEmpty { intent.getStringExtra(EXTRA_PACKAGE).orEmpty() }
-                val label = remember(pkg) { appLabel(pkg) }
+                val pkgFallback = pkg.substringAfterLast('.').ifEmpty { "Zen Gate" }
+                val label by produceState(initialValue = pkgFallback, pkg) {
+                    value = withContext(Dispatchers.IO) { appLabel(pkg) }
+                }
                 blockScreen(
                     appLabel = label,
                     waitSec = waitSec,
@@ -95,7 +108,7 @@ class BlockActivity : ComponentActivity() {
                     resetKey = resetKey,
                     onStale = { finish() },
                     onQuick = {
-                        scope.launch {
+                        activityScope.launch {
                             val wall = System.currentTimeMillis()
                             val store = GateStore(this@BlockActivity)
                             val cfgNow = GateState.config
@@ -117,7 +130,7 @@ class BlockActivity : ComponentActivity() {
                         }
                     },
                     onUnlock = {
-                        scope.launch {
+                        activityScope.launch {
                             val wall = System.currentTimeMillis()
                             val store = GateStore(this@BlockActivity)
                             val cfgNow = GateState.config
@@ -160,6 +173,7 @@ class BlockActivity : ComponentActivity() {
 
     override fun onDestroy() {
         isShowing = false
+        wasPaused = false
         // Fresh instances must take the new intent's package (singleInstance
         // reuse otherwise resurrects a stale anchor: unlock opened the wrong app).
         currentPkg = ""
@@ -171,7 +185,9 @@ class BlockActivity : ComponentActivity() {
         isShowing = false
         // Any exit (home press, screen off, shade tug) invalidates the wait.
         // onResume restarts it fresh: the countdown only ever runs while shown.
-        wasPaused = true
+        // Skip when finishing: the unlock path finishes deliberately and must
+        // not bump the tick on the way out.
+        if (!isFinishing) wasPaused = true
     }
 
     override fun onResume() {
@@ -197,7 +213,7 @@ class BlockActivity : ComponentActivity() {
                 .needsMidnightReset(base, today)
         ) {
             com.abrai.zengate.policy.PoolEngine
-                .midnightReset(today, wall, cfg)
+                .midnightReset(today, cfg)
         } else {
             base
         }
@@ -261,30 +277,49 @@ private fun blockScreen(
     onQuick: () -> Unit,
     onUnlock: () -> Unit,
 ) {
-    var elapsed by remember(resetKey) { mutableIntStateOf(0) }
+    // Survives rotation: elapsed seconds are saved, keyed on resetKey which
+    // includes waitSec so a new wait never reuses a stale value.
+    var elapsed by rememberSaveable(resetKey) { mutableIntStateOf(0) }
+    // Guard against double-tap: disable both cards after the first unlock tap.
+    var unlocking by remember(resetKey) { mutableStateOf(false) }
+    val maxWait = maxOf(waitSec, quickWaitSec)
     // Stale-block watcher: runs for the whole composition. A later unlock or a
     // pause must still dismiss, even after the countdown has finished.
+    // Pre-check before the first delay so an already-stale block goes now.
     LaunchedEffect(Unit) {
         val dismissGen = GateState.blockDismissGen
+
+        fun shouldDismiss(): Boolean = GateState.blockDismissGen != dismissGen || GateState.poolSec > 0
+        if (GateState.blockDismissGen != dismissGen) {
+            Log.d("ZenGate", "pause requested under block; dismissing")
+            onStale()
+            return@LaunchedEffect
+        }
+        if (GateState.poolSec > 0) {
+            Log.d("ZenGate", "grace granted under block; dismissing")
+            onStale()
+            return@LaunchedEffect
+        }
         while (true) {
             delay(500)
+            if (!shouldDismiss()) continue
             if (GateState.blockDismissGen != dismissGen) {
                 Log.d("ZenGate", "pause requested under block; dismissing")
-                onStale()
-                return@LaunchedEffect
-            }
-            if (GateState.poolSec > 0) {
+            } else {
                 Log.d("ZenGate", "grace granted under block; dismissing")
-                onStale()
-                return@LaunchedEffect
             }
+            onStale()
+            return@LaunchedEffect
         }
     }
-    val maxWait = maxOf(waitSec, quickWaitSec)
+    // Deadline-anchored countdown: drift-free, rotation-safe via saved elapsed.
     LaunchedEffect(resetKey) {
-        while (elapsed < maxWait) {
-            delay(1_000)
-            elapsed++
+        val deadline = SystemClock.elapsedRealtime() + maxWait * 1_000L
+        while (true) {
+            val remainingMs = deadline - SystemClock.elapsedRealtime()
+            elapsed = ((maxWait * 1_000L - remainingMs) / 1_000L).toInt().coerceIn(0, maxWait)
+            if (remainingMs <= 0) break
+            delay(250)
         }
         Log.d("ZenGate", "wait complete")
     }
@@ -329,26 +364,37 @@ private fun blockScreen(
                 fontSize = 72.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
             )
             Spacer(Modifier.height(18.dp))
-            waitBar(waitSec, resetKey)
+            waitBar(maxWait, resetKey)
             Spacer(Modifier.height(52.dp))
             if (ui.showQuick) {
                 openCard(
                     title = ui.quickLabel,
                     right = DurationFmt.waitValue(ui.quickRemainingSec),
-                    ready = ui.quickReady,
+                    ready = ui.quickReady && !unlocking,
                     primary = false,
-                    onClick = onQuick,
+                    onClick = {
+                        if (!unlocking) {
+                            unlocking = true
+                            onQuick()
+                        }
+                    },
                 )
                 Spacer(Modifier.height(14.dp))
             }
             openCard(
                 title = ui.fullLabel,
                 right = DurationFmt.waitValue(ui.fullRemainingSec),
-                ready = ui.fullReady,
+                ready = ui.fullReady && !unlocking,
                 primary = true,
-                onClick = onUnlock,
+                onClick = {
+                    if (!unlocking) {
+                        unlocking = true
+                        onUnlock()
+                    }
+                },
             )
             Spacer(Modifier.height(44.dp))
             Text(
@@ -430,13 +476,19 @@ private fun openCard(
             ready -> Mint
             else -> Color.White.copy(alpha = 0.5f)
         }
+    // Locked cards announce when they become available, e.g. "Open available in 12s".
+    val description = if (ready) title else "$title available in $right"
     Surface(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .height(76.dp)
                 .clip(shape)
-                .clickable(enabled = ready, role = Role.Button, onClick = onClick),
+                .clickable(enabled = ready, role = Role.Button, onClick = onClick)
+                .semantics {
+                    contentDescription = description
+                    if (!ready) disabled()
+                },
         shape = shape,
         color = fill,
         border = border,

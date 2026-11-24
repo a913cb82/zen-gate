@@ -1,13 +1,14 @@
 package com.abrai.zengate
 
 import android.app.AppOpsManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.PowerManager
 import android.os.Process
 import android.provider.Settings
 
-enum class CheckStatus { OK, MISSING, MANUAL }
+enum class CheckStatus { OK, MISSING }
 
 /** One setup row. The gate only needs a few things; everything else is noise. */
 data class SetupCheck(
@@ -61,7 +62,17 @@ object SetupChecks {
                 context.contentResolver,
                 Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
             ) ?: return false
-        return enabled.contains(context.packageName)
+        // Exact match: split the ':'-separated flattened components and compare
+        // package names. A contains() check false-positives on prefixes.
+        return enabled.split(':').any { part ->
+            val component: ComponentName? =
+                try {
+                    ComponentName.unflattenFromString(part)
+                } catch (_: Exception) {
+                    null
+                }
+            component != null && component.packageName == context.packageName
+        }
     }
 
     fun hasUsageAccess(context: Context): Boolean {

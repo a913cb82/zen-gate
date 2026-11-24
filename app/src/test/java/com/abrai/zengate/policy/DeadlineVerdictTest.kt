@@ -279,4 +279,90 @@ class DeadlineVerdictTest {
             ),
         )
     }
+
+    @Test
+    fun `bug3 survival-shaped overlay over gated app launches for the sticky anchor`() {
+        // Folded from Bug3OverlayVerdictTest: whitelisted UbikiTouch usage-
+        // foreground over Instagram. The sticky anchor (Instagram) decides;
+        // the transparent live root never does.
+        assertEquals(
+            Launch("com.instagram.android"),
+            DeadlineVerdict.decide(
+                enabled = true,
+                sessionRemainingMs = 0,
+                rootPkg = "eu.toneiv.ubktouch",
+                lastEventPkg = "com.instagram.android",
+                ownPkg = own,
+                userWhitelist = whitelist + "eu.toneiv.ubktouch",
+                // Item-3 exit: ubktouch is transparent via the seeded user set,
+                // not via hardcoded survival.
+                transparentPkgs = setOf("eu.toneiv.ubktouch"),
+                keyguardLocked = false,
+                interactive = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `ime root never launches`() {
+        // RED: an ignored IME over a gated app must stay quiet — the anchor
+        // path owns the next transition, not the transient root.
+        val ime = "com.google.android.inputmethod.latin"
+        assertEquals(
+            Skip,
+            DeadlineVerdict.decide(
+                enabled = true,
+                sessionRemainingMs = 0,
+                rootPkg = ime,
+                lastEventPkg = "com.instagram.android",
+                ownPkg = own,
+                userWhitelist = whitelist,
+                transparentPkgs = emptySet(),
+                extraIgnored = setOf(ime),
+                keyguardLocked = false,
+                interactive = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `transparent sticky anchor stays quiet with no window`() {
+        // RED: a transparent overlay as the sticky anchor is looked through,
+        // never launched for — there is no gated app behind it to own.
+        assertEquals(
+            Skip,
+            DeadlineVerdict.decide(
+                enabled = true,
+                sessionRemainingMs = 0,
+                rootPkg = null,
+                lastEventPkg = "com.example.overlay",
+                ownPkg = own,
+                userWhitelist = whitelist,
+                transparentPkgs = setOf("com.example.overlay"),
+                keyguardLocked = false,
+                interactive = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `ignored sticky anchor stays quiet with no window`() {
+        // An ignored (IME) sticky anchor is transient noise, not free use.
+        val ime = "com.google.android.inputmethod.latin"
+        assertEquals(
+            Skip,
+            DeadlineVerdict.decide(
+                enabled = true,
+                sessionRemainingMs = 0,
+                rootPkg = null,
+                lastEventPkg = ime,
+                ownPkg = own,
+                userWhitelist = whitelist,
+                transparentPkgs = emptySet(),
+                extraIgnored = setOf(ime),
+                keyguardLocked = false,
+                interactive = true,
+            ),
+        )
+    }
 }

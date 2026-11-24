@@ -2,6 +2,7 @@ package com.abrai.zengate.ui
 
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.SystemClock
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -17,6 +18,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
@@ -33,7 +36,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -54,7 +59,7 @@ fun pickerScreen(
     val context = LocalContext.current
     var apps by remember { mutableStateOf<List<AppRow>?>(null) }
     LaunchedEffect(Unit) {
-        apps = withContext(Dispatchers.Default) { loadApps(context.packageManager) }
+        apps = cachedApps(context.packageManager)
     }
     val whitelist by store.whitelist.collectAsState(initial = emptySet())
     val transparent by store.transparent.collectAsState(initial = emptySet())
@@ -115,11 +120,16 @@ private fun searchField(
     value: String,
     onChange: (String) -> Unit,
 ) {
+    val keyboard = LocalSoftwareKeyboardController.current
     TextField(
         value = value,
         onValueChange = onChange,
         placeholder = { Text("Search apps…", color = Subtle, fontSize = 14.sp) },
         singleLine = true,
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+        // IME Done hides the keyboard so back navigates instead of just
+        // dismissing the IME; the per-screen BackHandler also hides first.
+        keyboardActions = KeyboardActions(onDone = { keyboard?.hide() }),
         shape = RoundedCornerShape(16.dp),
         colors =
             TextFieldDefaults.colors(
@@ -141,6 +151,8 @@ private fun pickerRow(
     showOverlayChip: Boolean = true,
     onToggle: (Boolean) -> Unit,
 ) {
+    // Row and pill both single-toggle via onToggle(!on): the inner pill
+    // consumes the tap so the outer row does not fire a second toggle.
     Surface(
         modifier = Modifier.fillMaxWidth().clickable { onToggle(!on) },
         shape = RoundedCornerShape(16.dp),
@@ -192,7 +204,7 @@ fun overlayScreen(
     val context = LocalContext.current
     var apps by remember { mutableStateOf<List<AppRow>?>(null) }
     LaunchedEffect(Unit) {
-        apps = withContext(Dispatchers.Default) { loadApps(context.packageManager) }
+        apps = cachedApps(context.packageManager)
     }
     val overlays by store.transparent.collectAsState(initial = emptySet())
     var query by remember { mutableStateOf("") }
@@ -229,6 +241,24 @@ fun overlayScreen(
             }
         }
     }
+}
+
+private object AppCache {
+    var apps: List<AppRow>? = null
+    var loadedAtMs: Long = 0L
+    const val TTL_MS = 30_000L
+}
+
+/** Shared across picker + overlay entries: 30s TTL so re-entry is instant. */
+private suspend fun cachedApps(pm: PackageManager): List<AppRow> {
+    val now = SystemClock.elapsedRealtime()
+    AppCache.apps?.let { cached ->
+        if (now - AppCache.loadedAtMs < AppCache.TTL_MS) return cached
+    }
+    val fresh = withContext(Dispatchers.Default) { loadApps(pm) }
+    AppCache.apps = fresh
+    AppCache.loadedAtMs = SystemClock.elapsedRealtime()
+    return fresh
 }
 
 private fun loadApps(pm: PackageManager): List<AppRow> {

@@ -10,19 +10,20 @@ object GatePolicy {
             "com.android.server.telecom",
             "com.android.incallui",
             "com.android.emergency",
-            "com.android.systemui",
             "com.google.android.deskclock",
+            // systemui is transparent chrome (looked through), not survival.
             // Item-3 exit: ubktouch + miui.systemui.plugin left this list.
             // The seeded user transparent set owns them now (see SeedTransparentPackages).
         )
 
     /**
-     * Fixed 30-minute kill switch (master pause): a wall-clock deadline,
-     * persisted, auto-resumed by a one-shot alarm. Survives reboot (boot
-     * recomputes remaining); expiry while off reads as active.
+     * Kill-switch pause: a wall-clock deadline, persisted, auto-resumed by a
+     * one-shot alarm. Survives reboot (boot recomputes remaining); expiry
+     * while off reads as active. The duration knob lives in
+     * ZenConfig.pauseDurationSec — services use the literal 30 * 60 * 1_000L
+     * default until their TODO migrates them to the knob (no const here: a
+     * second source of truth for the duration already drifted once).
      */
-    const val PAUSE_DURATION_MS = 30 * 60 * 1_000L
-
     fun isPaused(
         pauseUntilWallMs: Long,
         nowWallMs: Long,
@@ -51,15 +52,16 @@ object GatePolicy {
 
     /**
      * Forced package-cache refresh (new keyboard/launcher installs) with
-     * throttle: a force past the throttle wins; unforced never does here
-     * (TTL staleness stays inside the resolvers).
+     * throttle: a force at/after the throttle wins; unforced never does here
+     * (TTL staleness stays inside the resolvers). Clock skew (now behind
+     * last-forced) reads as zero elapsed, never as a huge due gap.
      */
     fun refreshDue(
         nowMs: Long,
         lastForcedMs: Long,
         force: Boolean,
         throttleMs: Long = 5_000,
-    ): Boolean = force && nowMs - lastForcedMs > throttleMs
+    ): Boolean = force && (nowMs - lastForcedMs).coerceAtLeast(0) >= throttleMs
 
     /**
      * Transparent system chrome (hardcoded overlays only, plus user-declared):

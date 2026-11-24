@@ -39,16 +39,16 @@ object PoolEngine {
 
     /**
      * Settle an open drain segment against the clock: deduct whole elapsed
-     * seconds from the pool. Null when no segment is open (fresh grant,
-     * post-block, launcher transit) — callers then owe nothing.
+     * seconds from the pool. Null segment means no segment is open (fresh
+     * grant, post-block, launcher transit) — callers then owe nothing.
      */
     fun settleSegment(
         state: PoolState,
-        enterElapsedMs: Long,
+        enterElapsedMs: Long?,
         nowElapsedMs: Long,
     ): PoolState? {
-        if (enterElapsedMs == 0L) return null
-        val spent = ((nowElapsedMs - enterElapsedMs) / 1_000).coerceAtLeast(0)
+        val enter = enterElapsedMs ?: return null
+        val spent = ((nowElapsedMs - enter) / 1_000).coerceAtLeast(0)
         return drain(state, spent)
     }
 
@@ -57,15 +57,15 @@ object PoolEngine {
 
     /**
      * Live display value: the snapshot pool minus the open segment's elapsed
-     * wall-clock (floored at zero). No segment (start 0) -> snapshot as-is.
+     * wall-clock (floored at zero). Null segment -> snapshot as-is.
      */
     fun displayPoolSec(
         poolSec: Long,
-        segmentStartElapsedMs: Long,
+        segmentStartElapsedMs: Long?,
         nowElapsedMs: Long,
     ): Long {
-        if (segmentStartElapsedMs == 0L) return poolSec
-        return (poolSec - (nowElapsedMs - segmentStartElapsedMs) / 1_000).coerceAtLeast(0)
+        val start = segmentStartElapsedMs ?: return poolSec
+        return (poolSec - (nowElapsedMs - start) / 1_000).coerceAtLeast(0)
     }
 
     fun enterVerdict(poolSec: Long): EnterVerdict = if (poolSec > 0) EnterVerdict.DRAIN else EnterVerdict.BLOCK
@@ -73,33 +73,55 @@ object PoolEngine {
     fun penaltySec(
         state: PoolState,
         cfg: ZenConfig = ZenConfig(),
-    ): Long = cfg.baseWaitSec + cfg.waitIncrementSec * state.usagesToday
+    ): Long = (cfg.baseWaitSec + cfg.waitIncrementSec * state.usagesToday).coerceAtLeast(0)
 
     /**
-     * Phone unlock (fingerprint): outside a session this grants the grace pool —
-     * 10s of free use before the block. Inside a session it changes nothing.
+     * Phone unlock (fingerprint): outside a session this re-seeds the grace
+     * pool to exactly cfg.unlockPoolSec. Max-only would let a stale oversized
+     * pool linger after the knob shrinks, so the grant clamps both ways;
+     * inside a session it changes nothing.
      */
     fun phoneUnlock(
         state: PoolState,
-        nowWallMs: Long = 0L,
+        nowWallMs: Long,
         cfg: ZenConfig = ZenConfig(),
     ): PoolState =
         if (sessionRemainingMs(state, nowWallMs, cfg) > 0) {
             state
         } else {
-            state.copy(poolSec = state.poolSec.coerceAtLeast(cfg.unlockPoolSec))
+            state.copy(poolSec = cfg.unlockPoolSec.coerceAtLeast(0))
         }
+
+    @Deprecated(
+        "Pass explicit nowWallMs; service call sites are owned by another agent.",
+        ReplaceWith("phoneUnlock(state, nowWallMs, cfg)"),
+    )
+    fun phoneUnlock(
+        state: PoolState,
+        cfg: ZenConfig = ZenConfig(),
+    ): PoolState = phoneUnlock(state, 0L, cfg)
 
     /** Open tap: count it and start the timed session. The pool is untouched. */
     fun unlock(
         state: PoolState,
         nowWallMs: Long,
         cfg: ZenConfig = ZenConfig(),
-    ): PoolState =
-        state.copy(
-            usagesToday = state.usagesToday + 1,
-            sessionExpiryWallMs = nowWallMs + cfg.sessionAllowSec * 1_000,
+    ): PoolState {
+        // Saturating add: absurd sessionAllowSec values pin the deadline at
+        // Long.MAX_VALUE instead of wrapping negative.
+        val allowMs =
+            if (cfg.sessionAllowSec <= 0) {
+                0L
+            } else if (cfg.sessionAllowSec > (Long.MAX_VALUE - nowWallMs) / 1_000) {
+                Long.MAX_VALUE - nowWallMs
+            } else {
+                cfg.sessionAllowSec * 1_000
+            }
+        return state.copy(
+            usagesToday = if (state.usagesToday == Int.MAX_VALUE) Int.MAX_VALUE else state.usagesToday + 1,
+            sessionExpiryWallMs = nowWallMs + allowMs,
         )
+    }
 
     /** Session end: clear the deadline; the pool is left alone (block follows). */
     fun endSession(state: PoolState): PoolState = state.copy(sessionExpiryWallMs = 0L)
@@ -119,7 +141,6 @@ object PoolEngine {
     /** Midnight: fresh counters, grace pool, any running session ends. */
     fun midnightReset(
         todayId: String,
-        nowWallMs: Long,
         cfg: ZenConfig = ZenConfig(),
     ): PoolState =
         PoolState(
@@ -129,21 +150,37 @@ object PoolEngine {
             sessionExpiryWallMs = 0L,
         )
 
+    @Deprecated(
+        "nowWallMs was ignored; service call sites are owned by another agent.",
+        ReplaceWith("midnightReset(todayId, cfg)"),
+    )
+    fun midnightReset(
+        todayId: String,
+        nowWallMs: Long,
+        cfg: ZenConfig = ZenConfig(),
+    ): PoolState = midnightReset(todayId, cfg)
+
     fun needsMidnightReset(
         state: PoolState,
         todayId: String,
-    ): Boolean = state.dayId.isNotEmpty() && state.dayId != todayId
+    ): Boolean = state.dayId != todayId
 
-    /** Day id shifted by the configured reset time: before HH:MM counts as yesterday. */
+    /**
+     * Day id shifted by the configured reset time: before HH:MM counts as
+     * yesterday. Out-of-range hour/minute are clamped (never throws), so a
+     * corrupt knob still yields a stable id.
+     */
     fun dayIdFor(
         nowWallMs: Long,
         hour: Int,
         minute: Int,
         zone: ZoneId = ZoneId.systemDefault(),
     ): String {
+        val h = hour.coerceIn(0, 23)
+        val m = minute.coerceIn(0, 59)
         val now = LocalDateTime.ofInstant(Instant.ofEpochMilli(nowWallMs), zone)
         var date = now.toLocalDate()
-        if (now.toLocalTime() < java.time.LocalTime.of(hour, minute)) {
+        if (now.toLocalTime() < java.time.LocalTime.of(h, m)) {
             date = date.minusDays(1)
         }
         return date.toString()

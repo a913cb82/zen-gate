@@ -48,6 +48,7 @@ private data class KnobEdit(
     val unit: String,
     val initial: Long,
     val min: Long,
+    val max: Long,
     val commit: (Long) -> Unit,
 )
 
@@ -83,6 +84,7 @@ fun timersScreen(
                         "seconds",
                         cfg.sessionAllowSec,
                         30,
+                        3600,
                     ) { save(GateStoreKeys.K_SESSION_ALLOW, it) }
             }
             settingRow(
@@ -91,7 +93,7 @@ fun timersScreen(
                 value = "${cfg.baseWaitSec}s",
             ) {
                 edit =
-                    KnobEdit("Long base wait", "Floor of the full wait", "seconds", cfg.baseWaitSec, 1) {
+                    KnobEdit("Long base wait", "Floor of the full wait", "seconds", cfg.baseWaitSec, 1, 300) {
                         save(GateStoreKeys.K_BASE_WAIT, it)
                     }
             }
@@ -107,6 +109,7 @@ fun timersScreen(
                         "seconds",
                         cfg.waitIncrementSec,
                         0,
+                        60,
                     ) { save(GateStoreKeys.K_WAIT_INC, it) }
             }
             settingRow(
@@ -115,7 +118,7 @@ fun timersScreen(
                 value = DurationFmt.clock(cfg.unlockPoolSec),
             ) {
                 edit =
-                    KnobEdit("Free pool", "Quick open length", "seconds", cfg.unlockPoolSec, 1) {
+                    KnobEdit("Free pool", "Quick open length", "seconds", cfg.unlockPoolSec, 1, 3600) {
                         save(GateStoreKeys.K_UNLOCK_POOL, it)
                     }
             }
@@ -125,7 +128,7 @@ fun timersScreen(
                 value = if (cfg.quickWaitSec == 0L) "off" else "${cfg.quickWaitSec}s",
             ) {
                 edit =
-                    KnobEdit("Short wait", "Time before quick open", "seconds", cfg.quickWaitSec, 1) {
+                    KnobEdit("Short wait", "Time before quick open", "seconds", cfg.quickWaitSec, 0, 300) {
                         save(GateStoreKeys.K_QUICK_WAIT, it)
                     }
             }
@@ -155,18 +158,23 @@ fun timersScreen(
                     )
                 }
             }
+            // Pause knob is in minutes; the display below keeps the remainder
+            // note so a non-round second value is never hidden.
+            val pauseMin = cfg.pauseDurationSec / 60
+            val pauseRem = cfg.pauseDurationSec % 60
             settingRow(
                 title = "Pause length",
                 sub = "kill switch · auto-resumes",
-                value = "${cfg.pauseDurationSec / 60}m",
+                value = if (pauseRem == 0L) "${pauseMin}m" else "${pauseMin}m ${pauseRem}s",
             ) {
                 edit =
                     KnobEdit(
                         "Pause length",
                         "How long the kill switch stays on",
                         "minutes",
-                        cfg.pauseDurationSec / 60,
+                        pauseMin,
                         1,
+                        480,
                     ) { save(GateStoreKeys.K_PAUSE_SEC, it * 60) }
             }
 
@@ -244,7 +252,8 @@ private fun numberDialog(
 ) {
     var text by remember(edit) { mutableStateOf(edit.initial.toString()) }
     val value = text.toLongOrNull()
-    val valid = value != null && value >= edit.min
+    // Enforce the full min..max range; out-of-range commits are disabled.
+    val valid = value != null && value >= edit.min && value <= edit.max
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Paper,
@@ -252,6 +261,11 @@ private fun numberDialog(
         text = {
             Column {
                 Text(edit.sub, fontSize = 12.sp, color = Muted)
+                Text(
+                    "Allowed: ${edit.min}..${edit.max} ${edit.unit}",
+                    fontSize = 11.sp,
+                    color = Muted,
+                )
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
                     value = text,
@@ -266,7 +280,7 @@ private fun numberDialog(
         confirmButton = {
             TextButton(onClick = {
                 val v = value
-                if (v != null && v >= edit.min) onCommit(v)
+                if (v != null && v >= edit.min && v <= edit.max) onCommit(v)
             }, enabled = valid) {
                 Text("Save", color = if (valid) Green else Subtle, fontWeight = FontWeight.Bold)
             }

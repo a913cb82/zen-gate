@@ -78,4 +78,13 @@ class BlockUiTest {
         val u = ui(elapsed = 0, waitSec = 0)
         assertEquals(1, u.fullRemainingSec)
     }
+
+    @Test
+    fun `quick longer than full wait still reaches ready`() {
+        // RED: quick=60 > wait=30 must not pin elapsed at 30 forever.
+        val u = ui(elapsed = 60, waitSec = 30, quickWaitSec = 60)
+        assertTrue(u.fullReady)
+        assertTrue(u.quickReady)
+        assertEquals(0, u.quickRemainingSec)
+    }
 }

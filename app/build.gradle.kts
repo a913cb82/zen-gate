@@ -2,21 +2,36 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.dsl.KotlinAndroidProjectExtension
 
 // Traceable installs: versionCode tracks commit count, so dumpsys always tells what's live.
+// Fallbacks keep tarball/shallow builds working; +dirty marks uncommitted trees.
 val gitCount =
-    providers
-        .exec {
-            commandLine("git", "rev-list", "--count", "HEAD")
-        }.standardOutput.asText
-        .get()
-        .trim()
-        .toInt()
+    runCatching {
+        providers
+            .exec {
+                commandLine("git", "rev-list", "--count", "HEAD")
+            }.standardOutput.asText
+            .get()
+            .trim()
+            .toInt()
+    }.getOrNull() ?: 1
 val gitHash =
-    providers
-        .exec {
-            commandLine("git", "rev-parse", "--short", "HEAD")
-        }.standardOutput.asText
-        .get()
-        .trim()
+    runCatching {
+        providers
+            .exec {
+                commandLine("git", "rev-parse", "--short", "HEAD")
+            }.standardOutput.asText
+            .get()
+            .trim()
+    }.getOrNull()?.ifEmpty { "nogit" } ?: "nogit"
+val gitDirty =
+    runCatching {
+        providers
+            .exec {
+                commandLine("git", "status", "--porcelain")
+            }.standardOutput.asText
+            .get()
+            .trim()
+            .isNotEmpty()
+    }.getOrNull() ?: false
 
 plugins {
     alias(libs.plugins.android.application)
@@ -33,7 +48,7 @@ android {
         minSdk = 34
         targetSdk = 36
         versionCode = gitCount
-        versionName = "0.3.0-m3+$gitHash"
+        versionName = "0.3.0-m3+$gitHash" + if (gitDirty) "+dirty" else ""
     }
 
     buildTypes {
@@ -65,7 +80,6 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.datastore.preferences)
-    implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.junit)
 }

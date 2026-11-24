@@ -106,7 +106,20 @@ class ZenGateService : AccessibilityService() {
         val wall = System.currentTimeMillis()
         val elapsed = SystemClock.elapsedRealtime()
         if (!GateState.storeLoaded) {
-            Log.d(TAG, "mirror cold; skipping event for $pkg")
+            // TODO: attempt a store-direct read here so a cold mirror degrades
+            // to a slow path instead of fail-open. Kept fail-open: blocking on
+            // an unloaded mirror risks covering the unlock reveal with no pool
+            // truth (gating semantics unchanged by design).
+            Log.w(TAG, "mirror cold; fail-open skipping event for $pkg")
+            return
+        }
+        // Post-penalty ignore window (written by BlockActivity): the user
+        // already waited, so settle the drain and let them through unblocked.
+        if (GateState.ignorePkg != null &&
+            pkg == GateState.ignorePkg &&
+            elapsed < GateState.ignoreUntilElapsedMs
+        ) {
+            settleDrain(keepDraining = true)
             return
         }
         var cur = GateState.poolState()
@@ -114,7 +127,7 @@ class ZenGateService : AccessibilityService() {
         if (cur.dayId.isEmpty()) {
             cur = cur.copy(dayId = today)
         } else if (PoolEngine.needsMidnightReset(cur, today)) {
-            cur = PoolEngine.midnightReset(today, wall, cfg)
+            cur = PoolEngine.midnightReset(today, cfg)
         }
         if (GatePolicy.isPaused(GateState.pauseUntilMs, wall)) {
             persist(cur)
@@ -132,10 +145,12 @@ class ZenGateService : AccessibilityService() {
             }
         }
         if (pkg != GateState.lastGatedPkg) {
-            settleDrainLocked(cur, elapsed)
-            cur = GateState.poolState()
-            GateState.lastGatedPkg = pkg
-            GateState.drainEnterElapsedMs = 0L
+            synchronized(GateState.drainLock) {
+                settleDrainLocked(cur, elapsed)
+                cur = GateState.poolState()
+                GateState.lastGatedPkg = pkg
+                GateState.drainEnterElapsedMs = null
+            }
         }
         Log.d(
             TAG,
@@ -146,14 +161,18 @@ class ZenGateService : AccessibilityService() {
             Log.d(TAG, "launcher entry pkg=$pkg pool=${cur.poolSec}")
         }
         if (PoolEngine.enterVerdict(cur.poolSec) == PoolEngine.EnterVerdict.DRAIN) {
-            if (GateState.drainEnterElapsedMs == 0L) {
-                GateState.drainEnterElapsedMs = elapsed
-                GateAlarms.schedulePoolExpiry(this, cur.poolSec * 1_000)
+            synchronized(GateState.drainLock) {
+                if (GateState.drainEnterElapsedMs == null) {
+                    GateState.drainEnterElapsedMs = elapsed
+                    GateAlarms.schedulePoolExpiry(this, cur.poolSec * 1_000)
+                }
             }
             persist(cur)
             return
         }
-        GateState.drainEnterElapsedMs = 0L
+        synchronized(GateState.drainLock) {
+            GateState.drainEnterElapsedMs = null
+        }
         GateAlarms.cancelPoolExpiry(this)
         persist(cur)
         launchBlock(pkg, cur, cfg)
@@ -232,17 +251,19 @@ class ZenGateService : AccessibilityService() {
     /** Deduct the open drain segment for the previous app, if any. */
     private fun settleDrain(keepDraining: Boolean = false) {
         if (!GateState.storeLoaded) return
-        if (GateState.lastGatedPkg == null || GateState.drainEnterElapsedMs == 0L) return
         val elapsed = SystemClock.elapsedRealtime()
-        settleDrainLocked(GateState.poolState(), elapsed)
-        // Non-gated surfaces (whitelist, system UI) must not freeze grace: the
-        // wall-clock deduction above counts their time, and the remainder keeps
-        // draining so the block still arrives.
-        if (!keepDraining) return
-        val cur = GateState.poolState()
-        if (cur.poolSec > 0 && !PoolEngine.hasSession(cur)) {
-            GateState.drainEnterElapsedMs = elapsed
-            GateAlarms.schedulePoolExpiry(this, cur.poolSec * 1_000)
+        synchronized(GateState.drainLock) {
+            if (GateState.lastGatedPkg == null || GateState.drainEnterElapsedMs == null) return
+            settleDrainLocked(GateState.poolState(), elapsed)
+            // Non-gated surfaces (whitelist, system UI) must not freeze grace: the
+            // wall-clock deduction above counts their time, and the remainder keeps
+            // draining so the block still arrives.
+            if (!keepDraining) return
+            val cur = GateState.poolState()
+            if (cur.poolSec > 0 && !PoolEngine.hasSession(cur)) {
+                GateState.drainEnterElapsedMs = elapsed
+                GateAlarms.schedulePoolExpiry(this, cur.poolSec * 1_000)
+            }
         }
     }
 
@@ -250,16 +271,19 @@ class ZenGateService : AccessibilityService() {
         cur: com.abrai.zengate.policy.PoolState,
         elapsed: Long,
     ) {
-        // No open segment (fresh grant, post-block, launcher transit): nothing owed.
-        if (GateState.drainEnterElapsedMs == 0L) {
+        synchronized(GateState.drainLock) {
+            // No open segment (fresh grant, post-block, launcher transit): nothing owed.
+            val start = GateState.drainEnterElapsedMs
+            if (start == null) {
+                GateAlarms.cancelPoolExpiry(this)
+                return
+            }
+            val spent = ((elapsed - start) / 1_000).coerceAtLeast(0)
+            GateState.drainEnterElapsedMs = null
             GateAlarms.cancelPoolExpiry(this)
-            return
-        }
-        val spent = ((elapsed - GateState.drainEnterElapsedMs) / 1_000).coerceAtLeast(0)
-        GateState.drainEnterElapsedMs = 0L
-        GateAlarms.cancelPoolExpiry(this)
-        if (spent > 0) {
-            persist(PoolEngine.drain(cur, spent))
+            if (spent > 0) {
+                persist(PoolEngine.drain(cur, spent))
+            }
         }
     }
 

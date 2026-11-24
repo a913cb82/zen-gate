@@ -6,7 +6,7 @@ package com.abrai.zengate
  * decide per event without I/O.
  */
 object GateState {
-    /** Pause deadline (wall ms, 0 = active). Fixed 30-min kill switch. */
+    /** Pause deadline (wall ms, 0 = active). Kill-switch duration is a knob (see ZenConfig.pauseDurationSec). */
     @Volatile var pauseUntilMs: Long = 0L
 
     /** Bumped whenever pausing must dismiss a visible block. */
@@ -42,7 +42,16 @@ object GateState {
     /** Last app that was actually gated: lets home name it while Zen Gate is open. */
     val lastGatedApp = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
 
-    @Volatile var drainEnterElapsedMs: Long = 0L
+    /** Null = no open drain segment (fresh grant, post-block, transit). */
+    @Volatile var drainEnterElapsedMs: Long? = null
+
+    /** Single guard for drainEnterElapsedMs read-check-write-zero + schedule/cancel sections. */
+    @JvmStatic val drainLock = Any()
+
+    /** Last ACTION_DEADLINE dedup key + arrival time (elapsed ms); see GateService.onStartCommand. */
+    @Volatile var lastDeadline: String? = null
+
+    @Volatile var lastDeadlineAt: Long = 0L
 
     @Volatile var ignorePkg: String? = null
 

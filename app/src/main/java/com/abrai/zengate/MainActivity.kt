@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
@@ -12,8 +13,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import com.abrai.zengate.ui.homeScreen
@@ -52,7 +54,8 @@ class MainActivity : ComponentActivity() {
         }
         setContent {
             zenTheme {
-                val store = remember { GateStore(this) }
+                val appCtx = applicationContext
+                val store = remember { GateStore(appCtx) }
                 LaunchedEffect(Unit) {
                     store.seedDefaults(
                         setOf(
@@ -67,16 +70,23 @@ class MainActivity : ComponentActivity() {
                         version = SEED_TRANSPARENT_VERSION_CURRENT,
                     )
                 }
-                var screen by remember { mutableStateOf(Screen.Home) }
+                // Ordinal saver: Screen survives rotation/recreation via its ordinal.
+                var screenOrdinal by rememberSaveable { mutableIntStateOf(Screen.Home.ordinal) }
+                val screen: Screen =
+                    Screen.entries[screenOrdinal.coerceIn(0, Screen.entries.size - 1)]
+
+                fun go(target: Screen) {
+                    screenOrdinal = target.ordinal
+                }
                 val keyboard = LocalSoftwareKeyboardController.current
-                // Always intercept: reading the live screen state here avoids a
-                // stale enabled=false frame after < Home, which made one extra
-                // back press appear to "stay" on Home. Hide the search keyboard
-                // first so the IME cannot eat a back press of its own.
-                BackHandler(enabled = true) {
+                // Per-screen handler only: on Home there is no handler so the
+                // system back finishes the activity (global fallback).
+                // Search fields handle IME Done separately; hiding here covers
+                // the IME-visible back press before navigating.
+                BackHandler(enabled = screen != Screen.Home) {
                     keyboard?.hide()
                     val target = backTarget(screen)
-                    if (target == null) finish() else screen = target
+                    if (target != null) go(target)
                 }
                 when (screen) {
                     Screen.Picker ->
@@ -84,11 +94,11 @@ class MainActivity : ComponentActivity() {
                             store,
                             onBack = {
                                 keyboard?.hide()
-                                screen = Screen.Home
+                                go(Screen.Home)
                             },
                             onOverlays = {
                                 keyboard?.hide()
-                                screen = Screen.Overlays
+                                go(Screen.Overlays)
                             },
                         )
                     Screen.Overlays ->
@@ -96,22 +106,22 @@ class MainActivity : ComponentActivity() {
                             store,
                             onBack = {
                                 keyboard?.hide()
-                                screen = Screen.Picker
+                                go(Screen.Picker)
                             },
                         )
-                    Screen.Timers -> timersScreen(store, onBack = { screen = Screen.Home })
+                    Screen.Timers -> timersScreen(store, onBack = { go(Screen.Home) })
                     Screen.Setup ->
                         setupScreen(
                             store,
-                            onBack = { screen = Screen.Home },
+                            onBack = { go(Screen.Home) },
                             onFix = { id -> fixCheck(id) },
                         )
                     Screen.Home ->
                         homeScreen(
                             store,
-                            onPicker = { screen = Screen.Picker },
-                            onTimers = { screen = Screen.Timers },
-                            onSetup = { screen = Screen.Setup },
+                            onPicker = { go(Screen.Picker) },
+                            onTimers = { go(Screen.Timers) },
+                            onSetup = { go(Screen.Setup) },
                         )
                 }
             }
@@ -138,7 +148,9 @@ class MainActivity : ComponentActivity() {
                         ),
                     )
                 }.onFailure {
-                    startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                    runCatching {
+                        startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                    }.onFailure { t -> Log.e("ZenGate", "battery settings unavailable", t) }
                 }
             SetupChecks.ID_A11Y -> startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             SetupChecks.ID_USAGE -> startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))

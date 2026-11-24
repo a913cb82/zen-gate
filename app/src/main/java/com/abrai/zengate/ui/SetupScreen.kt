@@ -90,7 +90,7 @@ private fun setupRow(
                 when (check.status) {
                     CheckStatus.OK ->
                         Text("Granted", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Green)
-                    else -> fixPill("Fix") { onFix(check.id) }
+                    CheckStatus.MISSING -> fixPill("Fix") { onFix(check.id) }
                 }
             }
             Spacer(Modifier.height(4.dp))

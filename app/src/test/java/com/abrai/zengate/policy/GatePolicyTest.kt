@@ -24,6 +24,19 @@ class GatePolicyTest {
     }
 
     @Test
+    fun `cache refresh fires on the throttle boundary`() {
+        // Exactly throttleMs apart counts as due (>=).
+        assertTrue(GatePolicy.refreshDue(nowMs = 15_000, lastForcedMs = 10_000, force = true))
+        assertFalse(GatePolicy.refreshDue(nowMs = 14_999, lastForcedMs = 10_000, force = true))
+    }
+
+    @Test
+    fun `cache refresh ignores clock skew`() {
+        // now behind last-forced must not underflow into a huge due gap.
+        assertFalse(GatePolicy.refreshDue(nowMs = 9_000, lastForcedMs = 10_000, force = true))
+    }
+
+    @Test
     fun `transparency covers hardcoded systemui plus the user set`() {
         val custom = setOf("com.example.overlay")
         assertTrue(GatePolicy.isTransparent("com.android.systemui", emptySet()))
@@ -179,10 +192,38 @@ class GatePolicyTest {
     }
 
     @Test
+    fun `systemui is transparent only, not survival`() {
+        // systemui left the survival set: it is looked through, never gated.
+        assertFalse(GatePolicy.survivalPackages.contains("com.android.systemui"))
+        assertTrue(GatePolicy.isTransparent("com.android.systemui", emptySet()))
+    }
+
+    @Test
     fun `session active only before expiry`() {
         assertTrue(GatePolicy.isSessionActive(1000L, 2000L))
         assertFalse(GatePolicy.isSessionActive(2000L, 2000L))
         assertFalse(GatePolicy.isSessionActive(3000L, 2000L))
         assertFalse(GatePolicy.isSessionActive(1000L, 0L))
+    }
+
+    @Test
+    fun `isSessionActive matches sessionRemainingMs positivity`() {
+        // The wall-clock predicate and the pool-math remaining must agree.
+        val expiries = listOf(0L, 1L, 999L, 1000L, 1001L, 5_000L, Long.MAX_VALUE)
+        val nows = listOf(0L, 1L, 999L, 1000L, 1001L, 5_000L)
+        for (expiry in expiries) {
+            for (now in nows) {
+                val remaining =
+                    PoolEngine.sessionRemainingMs(
+                        PoolState(sessionExpiryWallMs = expiry),
+                        now,
+                    )
+                assertEquals(
+                    "now=$now expiry=$expiry",
+                    GatePolicy.isSessionActive(now, expiry),
+                    remaining > 0,
+                )
+            }
+        }
     }
 }

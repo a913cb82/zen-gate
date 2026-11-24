@@ -23,7 +23,7 @@ Everything on the phone is blocked except a survival whitelist + user-whiteliste
 - **Alarms always ring through.** Clock/alarm fullscreen intents are never blocked, drained, or delayed.
 - **Midnight reset:** unlocks = 0, pool = 10.
 - **Launcher and Settings are blockable.** No safe haven; "kick to home" does not exist.
-- **Master disable (kill switch).** Enforcement can always be turned off two ways, both effective immediately: (1) the persistent notification's Disable/Enable action (shade is SystemUI, never covered by the block); (2) the Enable switch in the app's own screen (own package is survival-listed, always reachable). Persisted flag, default ON at fresh install. No PIN/friction (deferred per §10). Break-glass via adb remains documented.
+- **Master pause (kill switch).** Enforcement can always be paused for a fixed 30 minutes two ways, both effective immediately: (1) the persistent notification's Pause for 30 min / Re-enable now action (shade is SystemUI, never covered by the block); (2) the Pause for 30 min button in the app's own screen (own package is survival-listed, always reachable). A one-shot alarm auto-resumes when the 30 min elapse; pausing also dismisses a visible block. Persisted wall-clock deadline, default active at fresh install. No PIN/friction (deferred per §10). Break-glass via adb remains documented.
 - **Every number above is a default, not a constant** — all tunable in-app (see §3b).
 
 ## 3. Whitelist

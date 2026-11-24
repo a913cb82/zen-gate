@@ -13,8 +13,16 @@ class GateStatusTest {
     @Test
     fun `paused beats everything`() {
         assertEquals(
-            Paused,
+            Paused(0),
             GateStatus.describe(false, 60_000, 0, 10, 3, "com.beeper.android", emptySet()),
+        )
+    }
+
+    @Test
+    fun `paused reports minutes left`() {
+        assertEquals(
+            Paused(27),
+            GateStatus.describe(false, 60_000, 0, 10, 3, "com.beeper.android", emptySet(), pauseMinLeft = 27),
         )
     }
 

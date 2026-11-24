@@ -30,6 +30,9 @@ A fresh install starts from spec defaults + seed whitelist above.
 - adb bridge: usbipd hardware-id `2717:ff88`, device `c3c8b7bf`, hidden logon task
   `usbipd Xiaomi ADB auto-attach`, udev rule `51-xiaomi.rules`, `~/platform-tools` on PATH.
 - RSA key in WSL `~/.android/adbkey` — phone trust survives reboots.
+- App signing key is this machine's `~/.android/debug.keystore` (fresh
+  2026-11-24 after the old-PC key was lost → clean reinstall b89).
+  Back it up: losing it forces uninstall + full permission re-grant.
 - HyperOS may switch USB debugging (Security settings) off after a reboot —
   re-check when screenshots/input stop while `adb devices` still shows `device`.
 - HyperOS exemptions are mandatory, not optional: battery-unrestricted + autostart

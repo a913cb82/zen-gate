@@ -6,7 +6,15 @@ package com.abrai.zengate
  * decide per event without I/O.
  */
 object GateState {
-    @Volatile var enabled: Boolean = true
+    /** Pause deadline (wall ms, 0 = active). Fixed 30-min kill switch. */
+    @Volatile var pauseUntilMs: Long = 0L
+
+    /** Bumped whenever pausing must dismiss a visible block. */
+    @Volatile var blockDismissGen: Long = 0L
+
+    fun requestBlockDismiss() {
+        blockDismissGen++
+    }
 
     @Volatile var config: com.abrai.zengate.policy.ZenConfig =
         com.abrai.zengate.policy

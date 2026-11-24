@@ -9,6 +9,7 @@ adb with ledger below. Overlay transparency work (item #4) runs as Stages 1–3 
 | When | What | Active | Cumulative |
 |---|---|---|---|
 | Wave B/C | package query + install-verify + combined log pull | ~31s | 31s |
+| P0 install | uninstall + reinstall b89 (old-PC key lost), FGS confirmed alive | ~5s | 36s |
 
 Install streaming/Protect waits are reported separately, not charged here.
 
@@ -105,3 +106,35 @@ TODO on resume (in order):
 - Fix `36c5201`: own anchors (transparent still wins); live/deadline paths
   unchanged. Verified on phone: grant-into-settings, expiry mid-settings
   -> `root=null verdict=Skip`, UI 100% own, no block. Suite 68/68.
+
+## 2026-11-24: P0 review fixes (assistant review round, headless only)
+
+- #1 deadline transparent set is store-direct: `GateService.onDeadline` read
+  `GateState.transparentPkgs` (cold-empty in a fresh process → block could
+  launch over gesture/volume overlays). Now `store.transparent.first()`,
+  same as the other four flows there. Contract locked by the new
+  `DeadlineVerdictTest` seeded-overlay case (13/13).
+- #2 screen-off write-through: `onScreenOff` drained to the store but never
+  `applyPool`, so the mirror converged eventually and screen-on re-armed
+  from stale pool. Extracted pure `PoolEngine.settleSegment` (3 new tests),
+  caller now write-through. Removed unused `wall`/`cfg` locals.
+- #3 USER_PRESENT single owner: removed the dead manifest branch + filter
+  from `SupervisorReceiver`; live `GateService` dynamic receiver is the only
+  grace-grant path (PORTABILITY already documented manifest denial).
+- Suite 72/72, lint clean. No phone time used; install + routine-pull
+  observation still pending (grace after screen-off, overlay verdicts).
+
+## 2026-11-24: 30-min pause replaces boolean kill switch (headless first, phone after)
+
+- Fixed 30-min wall-clock pause (`pause_until_ms`, 0 = active) replaces the
+  latched boolean. One-shot `PAUSE_END` alarm auto-resumes; boot re-arms
+  from persisted truth (expiry while off clears the stale deadline).
+- UI: home `Pause for 30 min` + `Auto-resumes at HH:MM`; paused state
+  `back in N min` (5s tick while open) + `Re-enable now`. Shade keeps the
+  instant kill switch: `Pause 30 min` / `Re-enable now`, title
+  `paused until HH:MM`.
+- Pause dismisses a visible block (new `blockDismissGen` watcher in
+  BlockActivity); `GateStatus.Paused(minLeft)` feeds the shade line.
+- Pure seams: `GatePolicy.isPaused/pauseRemainingMs/pauseMinLeft`
+  (ceiling minutes) + `Paused(minLeft)` mapping — 4 new tests.
+- Suite 76/76, lint clean.

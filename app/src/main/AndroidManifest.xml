@@ -71,11 +71,11 @@
             </intent-filter>
         </receiver>
 
-        <receiver android:name=".SupervisorReceiver" android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.USER_PRESENT" />
-            </intent-filter>
-        </receiver>
+        <!-- No intent-filter: alarm/boot entry is via explicit intents only.
+             USER_PRESENT was removed (P0#3): manifest delivery is
+             SmartPower-denied on HyperOS; the live GateService dynamic
+             receiver is the single grace-grant owner. -->
+        <receiver android:name=".SupervisorReceiver" android:exported="false" />
 
         <activity
             android:name=".BlockActivity"

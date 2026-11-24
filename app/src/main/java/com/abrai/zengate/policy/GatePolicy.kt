@@ -17,6 +17,30 @@ object GatePolicy {
         )
 
     /**
+     * Fixed 30-minute kill switch (master pause): a wall-clock deadline,
+     * persisted, auto-resumed by a one-shot alarm. Survives reboot (boot
+     * recomputes remaining); expiry while off reads as active.
+     */
+    const val PAUSE_DURATION_MS = 30 * 60 * 1_000L
+
+    fun isPaused(
+        pauseUntilWallMs: Long,
+        nowWallMs: Long,
+    ): Boolean = pauseUntilWallMs > nowWallMs
+
+    fun pauseRemainingMs(
+        pauseUntilWallMs: Long,
+        nowWallMs: Long,
+    ): Long = (pauseUntilWallMs - nowWallMs).coerceAtLeast(0L)
+
+    /**
+     * Whole minutes left, ceiling: "back in 30 min" holds until actually
+     * under 29:00; zero stays zero (which reads as active, never "0 min").
+     */
+    fun pauseMinLeft(remainingMs: Long): Long =
+        if (remainingMs <= 0) 0 else (remainingMs + 59_999) / 60_000
+
+    /**
      * Locked-or-dark suppression: the gate never applies while the keyguard is
      * up or the screen is off (lockscreen camera/torch/secure surfaces).
      * Single named seam so ROM keyguard nuances stay swappable + testable.

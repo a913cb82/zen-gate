@@ -35,6 +35,21 @@ object PoolEngine {
         seconds: Long,
     ): PoolState = state.copy(poolSec = (state.poolSec - seconds).coerceAtLeast(0))
 
+    /**
+     * Settle an open drain segment against the clock: deduct whole elapsed
+     * seconds from the pool. Null when no segment is open (fresh grant,
+     * post-block, launcher transit) — callers then owe nothing.
+     */
+    fun settleSegment(
+        state: PoolState,
+        enterElapsedMs: Long,
+        nowElapsedMs: Long,
+    ): PoolState? {
+        if (enterElapsedMs == 0L) return null
+        val spent = ((nowElapsedMs - enterElapsedMs) / 1_000).coerceAtLeast(0)
+        return drain(state, spent)
+    }
+
     /** What a gated-app entry does: drain the pool, or block when it is empty. */
     enum class EnterVerdict { DRAIN, BLOCK }
 

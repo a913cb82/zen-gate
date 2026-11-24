@@ -18,10 +18,12 @@ import java.time.ZoneId
 object GateAlarms {
     const val ACTION_POOL_EXPIRED = "com.abrai.zengate.POOL_EXPIRED"
     const val ACTION_SESSION_END = "com.abrai.zengate.SESSION_END"
+    const val ACTION_PAUSE_END = "com.abrai.zengate.PAUSE_END"
     const val ACTION_MIDNIGHT = "com.abrai.zengate.MIDNIGHT"
 
     private const val RC_POOL = 11
     private const val RC_SESSION = 12
+    private const val RC_PAUSE = 13
     private const val RC_MIDNIGHT = 14
     private const val TAG = "ZenGate"
 
@@ -52,6 +54,16 @@ object GateAlarms {
     ) {
         exactIn(context, ACTION_SESSION_END, RC_SESSION, delayMs)
     }
+
+    /** Kill-switch pause: fixed 30 min, wall-clock, auto-resumed by this alarm. */
+    fun schedulePauseEnd(
+        context: Context,
+        delayMs: Long,
+    ) {
+        exactIn(context, ACTION_PAUSE_END, RC_PAUSE, delayMs)
+    }
+
+    fun cancelPauseEnd(context: Context) = cancel(context, ACTION_PAUSE_END, RC_PAUSE)
 
     fun scheduleMidnight(
         context: Context,

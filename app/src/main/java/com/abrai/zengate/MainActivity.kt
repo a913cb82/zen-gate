@@ -44,6 +44,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.abrai.zengate.policy.GatePolicy
 import com.abrai.zengate.policy.ZenConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -143,30 +144,76 @@ private fun homeScreen(
     onSetup: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    val enabled by store.enabled.collectAsState(initial = true)
-    val whitelist by store.whitelist.collectAsState(initial = emptySet())
     val context = store.appContext
+    val pauseUntil by store.pauseUntil.collectAsState(initial = 0L)
+    val whitelist by store.whitelist.collectAsState(initial = emptySet())
     val missing = remember { mutableStateOf(-1) }
     androidx.compose.runtime.LaunchedEffect(Unit) {
         missing.value = SetupChecks.missingAutoCount(context)
     }
+    var tick by remember { mutableStateOf(0) }
+    // Recompose every few seconds while paused so the minutes count down.
+    val pausedNow = GatePolicy.isPaused(pauseUntil, System.currentTimeMillis())
+    androidx.compose.runtime.LaunchedEffect(pausedNow) {
+        while (pausedNow) {
+            kotlinx.coroutines.delay(5_000)
+            tick++
+        }
+    }
+    val now = remember(tick, pauseUntil) { System.currentTimeMillis() }
+    val paused = GatePolicy.isPaused(pauseUntil, now)
+    val minLeft = GatePolicy.pauseMinLeft(GatePolicy.pauseRemainingMs(pauseUntil, now))
     Column(
         Modifier.fillMaxSize().statusBarsPadding().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(if (enabled) "Zen Gate: ON" else "Zen Gate: PAUSED")
+        Text(if (paused) "Zen Gate: PAUSED — back in $minLeft min" else "Zen Gate: ON")
         Text("${whitelist.size} apps whitelisted")
         if (missing.value > 0) {
             Text("${missing.value} setup items need attention")
         }
-        Button(onClick = { scope.launch { store.setEnabled(!enabled) } }) {
-            Text(if (enabled) "Disable gate" else "Enable gate")
+        if (paused) {
+            Button(onClick = {
+                scope.launch {
+                    context.startForegroundService(
+                        Intent(context, GateService::class.java).setAction(GateService.ACTION_RESUME),
+                    )
+                }
+            }) {
+                Text("Re-enable now")
+            }
+        } else {
+            Button(onClick = {
+                scope.launch {
+                    val until = System.currentTimeMillis() + GatePolicy.PAUSE_DURATION_MS
+                    GateState.pauseUntilMs = until
+                    GateState.requestBlockDismiss()
+                    store.setPauseUntil(until)
+                    GateAlarms.schedulePauseEnd(context, GatePolicy.PAUSE_DURATION_MS)
+                }
+            }) {
+                Text("Pause for 30 min")
+            }
+            Text("Auto-resumes at " + clockLabel(now + GatePolicy.PAUSE_DURATION_MS))
         }
         Button(onClick = onPicker) { Text("Whitelisted apps") }
         Button(onClick = onKnobs) { Text("Timings") }
         Button(onClick = onSetup) { Text("Setup checklist") }
     }
 }
+
+/** Wall-clock HH:MM for pause/resume labels. */
+private fun clockLabel(wallMs: Long): String =
+    try {
+        java.time.LocalTime
+            .ofInstant(
+                java.time.Instant.ofEpochMilli(wallMs),
+                java.time.ZoneId.systemDefault(),
+            ).toString()
+            .substring(0, 5)
+    } catch (t: Throwable) {
+        ""
+    }
 
 private data class AppEntry(
     val label: String,

@@ -3,7 +3,6 @@ package com.abrai.zengate
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
@@ -18,7 +17,7 @@ import kotlinx.coroutines.flow.map
 private val Context.gateDataStore: DataStore<Preferences> by preferencesDataStore(name = "gate")
 
 object GateStoreKeys {
-    val ENABLED = booleanPreferencesKey("enabled")
+    val PAUSE_UNTIL_MS = longPreferencesKey("pause_until_ms")
     val SESSION_EXPIRY_MS = longPreferencesKey("session_expiry_ms")
     val POOL_SEC = longPreferencesKey("pool_sec")
     val USAGES = intPreferencesKey("usages")
@@ -69,8 +68,8 @@ class GateStore(
     val appContext: Context = context.applicationContext
     private val app: Context = appContext
 
-    val enabled: Flow<Boolean> =
-        app.gateDataStore.data.map { it[GateStoreKeys.ENABLED] ?: true }
+    val pauseUntil: Flow<Long> =
+        app.gateDataStore.data.map { it[GateStoreKeys.PAUSE_UNTIL_MS] ?: 0L }
 
     val snapshot: Flow<EngineSnapshot> =
         app.gateDataStore.data.map {
@@ -106,8 +105,8 @@ class GateStore(
             )
         }
 
-    suspend fun setEnabled(value: Boolean) {
-        app.gateDataStore.edit { it[GateStoreKeys.ENABLED] = value }
+    suspend fun setPauseUntil(value: Long) {
+        app.gateDataStore.edit { it[GateStoreKeys.PAUSE_UNTIL_MS] = value }
     }
 
     suspend fun savePool(state: PoolState) {

@@ -245,10 +245,17 @@ private fun blockScreen(
     var remaining by remember(resetKey) { mutableIntStateOf(waitSec) }
     var quickRemaining by remember(resetKey) { mutableIntStateOf(quickWaitSec) }
     // Stale-block watcher: runs for the whole composition (the countdown above
-    // exits once the wait completes, but a later unlock must still dismiss).
+    // exits once the wait completes, but a later unlock — or a 30-min pause —
+    // must still dismiss).
     LaunchedEffect(Unit) {
+        val dismissGen = GateState.blockDismissGen
         while (true) {
             delay(500)
+            if (GateState.blockDismissGen != dismissGen) {
+                Log.d("ZenGate", "pause requested under block; dismissing")
+                onStale()
+                return@LaunchedEffect
+            }
             if (GateState.poolSec > 0) {
                 Log.d("ZenGate", "grace granted under block; dismissing")
                 onStale()

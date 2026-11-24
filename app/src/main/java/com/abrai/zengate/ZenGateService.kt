@@ -108,7 +108,7 @@ class ZenGateService : AccessibilityService() {
         } else if (PoolEngine.needsMidnightReset(cur, today)) {
             cur = PoolEngine.midnightReset(today, wall, cfg)
         }
-        if (!GateState.enabled) {
+        if (GatePolicy.isPaused(GateState.pauseUntilMs, wall)) {
             persist(cur)
             return
         }

@@ -142,4 +142,47 @@ class PoolEngineTest {
         assertFalse(GatePolicy.isGated("com.example.app", own, emptySet(), white))
         assertTrue(GatePolicy.isGated("com.instagram.android", own, emptySet(), white))
     }
+
+    @Test
+    fun `pause is a wall-clock comparison`() {
+        // Fixed 30-min kill switch: paused until the deadline passes it.
+        assertTrue(GatePolicy.isPaused(1_000, 999))
+        assertFalse(GatePolicy.isPaused(1_000, 1_000))
+        assertFalse(GatePolicy.isPaused(0, 999_999_999))
+    }
+
+    @Test
+    fun `pause remaining floors at zero`() {
+        assertEquals(600, GatePolicy.pauseRemainingMs(1_000, 400))
+        assertEquals(0, GatePolicy.pauseRemainingMs(1_000, 1_000))
+        assertEquals(0, GatePolicy.pauseRemainingMs(1_000, 5_000))
+    }
+
+    @Test
+    fun `pause minutes are a ceiling`() {
+        // "back in 30 min" holds until actually under 29:00; 0 stays 0.
+        assertEquals(30, GatePolicy.pauseMinLeft(30 * 60 * 1_000))
+        assertEquals(30, GatePolicy.pauseMinLeft(29 * 60 * 1_000 + 1))
+        assertEquals(29, GatePolicy.pauseMinLeft(29 * 60 * 1_000))
+        assertEquals(1, GatePolicy.pauseMinLeft(60_000))
+        assertEquals(1, GatePolicy.pauseMinLeft(1))
+        assertEquals(0, GatePolicy.pauseMinLeft(0))
+    }
+
+    @Test
+    fun `settle segment deducts whole elapsed seconds`() {
+        // Screen-off path: the open segment is owed to the pool.
+        assertEquals(7L, PoolEngine.settleSegment(PoolState(poolSec = 10), 1_000, 4_000)?.poolSec)
+        assertEquals(0L, PoolEngine.settleSegment(PoolState(poolSec = 2), 1_000, 9_000)?.poolSec)
+    }
+
+    @Test
+    fun `settle segment with no open segment owes nothing`() {
+        assertEquals(null, PoolEngine.settleSegment(PoolState(poolSec = 10), 0, 99_000))
+    }
+
+    @Test
+    fun `settle segment under a second keeps the pool`() {
+        assertEquals(10L, PoolEngine.settleSegment(PoolState(poolSec = 10), 1_000, 1_500)?.poolSec)
+    }
 }

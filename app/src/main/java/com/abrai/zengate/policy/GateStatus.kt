@@ -8,7 +8,9 @@ package com.abrai.zengate.policy
  */
 object GateStatus {
     sealed interface Status {
-        data object Paused : Status
+        data class Paused(
+            val minLeft: Long,
+        ) : Status
 
         data class Session(
             val expiryWallMs: Long,
@@ -36,8 +38,9 @@ object GateStatus {
         foregroundPkg: String?,
         userWhitelist: Set<String>,
         blockShowing: Boolean = false,
+        pauseMinLeft: Long = 0,
     ): Status {
-        if (!enabled) return Status.Paused
+        if (!enabled) return Status.Paused(pauseMinLeft)
         if (sessionRemainingMs > 0) return Status.Session(sessionExpiryWallMs)
         // The block on screen is the posture: overlays (edge controls, shade)
         // passing over it must not flip the line to Unlimited.

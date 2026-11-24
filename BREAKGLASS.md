@@ -2,8 +2,9 @@
 
 Zen Gate can block Settings, so normal uninstall paths may be gated. In order:
 
-1. **In-app:** open Zen Gate (never gated) → Disable gate. Or pull the
-   notification shade (SystemUI is never covered) → notification action.
+1. **In-app:** open Zen Gate (never gated) → Pause for 30 min. Or pull the
+   notification shade (SystemUI is never covered) → notification action
+   (Pause for 30 min / Re-enable now).
 2. **Wait it out:** every block ends; Open grants a session with full access.
 3. **adb from PC** (bridge: android-development skill; values in `PORTABILITY.md`):
    ```bash

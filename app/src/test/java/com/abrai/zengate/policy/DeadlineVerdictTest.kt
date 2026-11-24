@@ -257,4 +257,26 @@ class DeadlineVerdictTest {
             )
         assertEquals(Skip, off)
     }
+
+    @Test
+    fun `seeded gesture overlay over gated app launches for the anchor`() {
+        // P0#1 contract: with the persisted transparent set the verdict
+        // follows the app behind the overlay. A cold (empty) mirror would
+        // launch for the overlay itself — so callers must pass the
+        // store-direct set, never the possibly-unloaded mirror.
+        assertEquals(
+            Launch("com.instagram.android"),
+            DeadlineVerdict.decide(
+                enabled = true,
+                sessionRemainingMs = 0,
+                rootPkg = "eu.toneiv.ubktouch",
+                lastEventPkg = "com.instagram.android",
+                ownPkg = own,
+                userWhitelist = whitelist,
+                transparentPkgs = setOf("eu.toneiv.ubktouch", "miui.systemui.plugin"),
+                keyguardLocked = false,
+                interactive = true,
+            ),
+        )
+    }
 }

@@ -41,18 +41,10 @@ class SupervisorReceiver : BroadcastReceiver() {
         val snap = store.snapshot.first().poolState()
         val cfg = store.config.first()
         when (action) {
-            Intent.ACTION_USER_PRESENT -> {
-                // Phone unlock: outside a session this grants the grace pool
-                // (10s free use before the block); inside one it changes nothing.
-                val cur = PoolEngine.phoneUnlock(snap, System.currentTimeMillis(), cfg)
-                if (cur != snap) {
-                    GateState.applyPool(cur)
-                    store.savePool(cur)
-                    GateState.drainEnterElapsedMs = android.os.SystemClock.elapsedRealtime()
-                    GateAlarms.schedulePoolExpiry(context, cur.poolSec * 1_000)
-                    Log.d(TAG, "phone unlock; grace pool=${cur.poolSec}")
-                }
-            }
+            // USER_PRESENT was removed here (P0#3): manifest delivery is
+            // SmartPower-denied on HyperOS (see PORTABILITY.md), so the live
+            // GateService dynamic receiver is the single grace-grant owner.
+            // A branch here would only double-grant or rot.
             GateAlarms.ACTION_POOL_EXPIRED -> {
                 // Persist here; the launch decision lives in ZenGateService
                 // (live active window). Forward package-scoped implicit: alarm
@@ -71,6 +63,13 @@ class SupervisorReceiver : BroadcastReceiver() {
                 store.savePool(cleared)
                 Log.d(TAG, "session ended; forwarding to gate service")
                 forward(context, GateAlarms.ACTION_SESSION_END)
+            }
+            GateAlarms.ACTION_PAUSE_END -> {
+                // Fixed 30-min pause elapsed: clear store-direct (same
+                // fresh-process discipline as the other branches).
+                GateState.pauseUntilMs = 0
+                store.setPauseUntil(0)
+                Log.d(TAG, "pause ended; gate active")
             }
             GateAlarms.ACTION_MIDNIGHT -> {
                 val now = System.currentTimeMillis()

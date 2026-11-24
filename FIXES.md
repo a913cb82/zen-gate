@@ -10,6 +10,7 @@ adb with ledger below. Overlay transparency work (item #4) runs as Stages 1–3 
 |---|---|---|---|
 | Wave B/C | package query + install-verify + combined log pull | ~31s | 31s |
 | P0 install | uninstall + reinstall b89 (old-PC key lost), FGS confirmed alive | ~5s | 36s |
+| Pause loop verify (b90) | update -r (data kept: 45 apps), feed PASS, pause→`Paused — 30 min left`+alarm set, resume→active, screenshots | ~40s | 76s |
 
 Install streaming/Protect waits are reported separately, not charged here.
 
@@ -138,3 +139,9 @@ TODO on resume (in order):
 - Pure seams: `GatePolicy.isPaused/pauseRemainingMs/pauseMinLeft`
   (ceiling minutes) + `Paused(minLeft)` mapping — 4 new tests.
 - Suite 76/76, lint clean.
+- Phone-verified b90 (`pm install -r`, whitelist intact at 45 apps):
+  feed PASS (detection + warm mirror), pause tap → shade
+  `Paused — 30 min left` + exact PAUSE_END alarm + home
+  `PAUSED — back in 30 min`, resume tap → `pause cleared; gate active`.
+  Unverified live: the 30-min alarm actually firing, and
+  pause-dismissing a visible block (pool was 0 but no block was up).

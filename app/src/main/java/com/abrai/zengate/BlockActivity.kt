@@ -183,11 +183,14 @@ class BlockActivity : ComponentActivity() {
     override fun onPause() {
         super.onPause()
         isShowing = false
-        // Any exit (home press, screen off, shade tug) invalidates the wait.
-        // onResume restarts it fresh: the countdown only ever runs while shown.
+        // Only real walk-aways invalidate the wait (BlockReset grace): a
+        // sub-second accidental exit (edge gesture, home swipe) keeps it.
         // Skip when finishing: the unlock path finishes deliberately and must
         // not bump the tick on the way out.
-        if (!isFinishing) wasPaused = true
+        if (!isFinishing) {
+            wasPaused = true
+            pausedAtElapsedMs = SystemClock.elapsedRealtime()
+        }
     }
 
     override fun onResume() {
@@ -195,8 +198,15 @@ class BlockActivity : ComponentActivity() {
         isShowing = true
         if (wasPaused) {
             wasPaused = false
-            Log.d(TAG, "resumed after exit; wait reset pkg=$currentPkg")
-            resetTick.intValue++
+            val awayMs = SystemClock.elapsedRealtime() - pausedAtElapsedMs
+            if (com.abrai.zengate.policy.BlockReset
+                    .shouldReset(awayMs)
+            ) {
+                Log.d(TAG, "resumed after exit; wait reset pkg=$currentPkg awayMs=$awayMs")
+                resetTick.intValue++
+            } else {
+                Log.d(TAG, "brief exit; wait kept pkg=$currentPkg awayMs=$awayMs")
+            }
         }
     }
 
@@ -253,6 +263,8 @@ class BlockActivity : ComponentActivity() {
         @Volatile var currentPkg: String = ""
 
         @Volatile private var wasPaused: Boolean = false
+
+        @Volatile private var pausedAtElapsedMs: Long = 0L
 
         // Snapshot state (not @Volatile): bumping recomposes the countdown.
         val resetTick = mutableIntStateOf(0)
